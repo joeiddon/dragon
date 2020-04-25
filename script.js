@@ -56,21 +56,32 @@ for (let t = 0; t < Math.PI * 2; t += 0.5) {
 }
 
 let num_seg_transforms = 20;
+let seg_length = 0.1;
 let seg_transforms = [
     //[step, [rx, ry, rz], scale]
     // the end of the tail just sits here
-    [0.1, [0, 0, 0], 1]
+    [0.5, [0, 0, 0], 0]
 ];
 
-let seg_update_interval_ms = 100;
+let seg_update_interval_ms = 10;
 let last_seg_update_ms;
 
 function update_seg_transforms () {
     if (time_ms - last_seg_update_ms < seg_update_interval_ms) return;
     last_seg_update_ms = time_ms;
 
-    // add new transform to start of tranforms
-    seg_transforms.unshift([0.5, [0.3, 0, 1], 1]);
+    if (Math.random() < 0.1) {
+        let joint = [
+            0,
+            (Math.random() - 0.5) * 0.2,
+            (Math.random() - 0.5) * 0.2
+        ];
+
+        // add new transform to start of tranforms
+        seg_transforms.unshift([seg_length, joint, 0.95]);
+    } else {
+        seg_transforms.unshift(seg_transforms[0]);
+    }
 
     // remove other end of transforms
     while (seg_transforms.length > num_seg_transforms) {
@@ -102,7 +113,7 @@ function populate_buffers() {
     // a unit 4d vector pointing in inital "normal" direction of segment face
     let step_init = [1, 0, 0];
 
-    let cur_pos = [-1, 0, 0];
+    let cur_pos = [0, 0, 0];
     // push start segment
     segments.push({
         'points': base_segment['points'].map(v => m4.apply(m4.translation(...cur_pos),v)),
