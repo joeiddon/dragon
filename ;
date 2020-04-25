@@ -51,32 +51,29 @@ gl.vertexAttribPointer(a_normal_loc, 3, gl.FLOAT, false, 0, 0);
 let radius = 0.3;
 
 let c = [];
-for (let t = 0; t < Math.PI * 2; t += 0.5) {
+for (let t = 0; t < Math.PI * 2; t += 0.2) {
     c.push([0, radius*Math.sin(t), radius*Math.cos(t), 1]);
 }
 
-let num_seg_transforms = 20;
 let seg_transforms = [
     //[step, [rx, ry, rz], scale]
-    // the end of the tail just sits here
-    [0.1, [0, 0, 0], 1]
 ];
 
-let seg_update_interval_ms = 100;
+let seg_update_interval_ms = 500;
 let last_seg_update_ms;
 
 function update_seg_transforms () {
     if (time_ms - last_seg_update_ms < seg_update_interval_ms) return;
     last_seg_update_ms = time_ms;
+    seg_transforms = [];
 
-    // add new transform to start of tranforms
-    seg_transforms.unshift([0.5, [0.3, 0, 1], 1]);
-
-    // remove other end of transforms
-    while (seg_transforms.length > num_seg_transforms) {
-        // remove the tranform just before the final end of tail transform
-        seg_transforms.splice(seg_transforms.length - 2, 1);
+    let steps = 5;
+    for (let i = 0; i < steps; i ++ ){
+        let x = i / steps;
+        seg_transforms.push([0.1, [0, 0, 1], 0.9]);
     }
+
+    seg_transforms.push([0.1, [0, 0, 0], 0]);
 }
 
 function populate_buffers() {
@@ -87,11 +84,8 @@ function populate_buffers() {
     ];
 
     function multiply_many(matrices) {
-        // multiplies in left to right order, so that the first index is the
-        // furthest left / last matrix. This means accumulator goes on left so
-        // that first index ends up on the furthest left and identity ends up
-        // on furthest left hand side ! This is definitely right - have tested
-        return matrices.reduce((acc,cur) => m4.multiply(acc, cur), m4.identity());
+        // multiplies in left to right order, i.e. accumulator on right of current
+        return matrices.reduce((acc,cur) => m4.multiply(cur, acc), m4.identity());
     }
 
     // just the current seg rotation for normals and step
@@ -126,15 +120,15 @@ function populate_buffers() {
         // update the current position by adding the rotated step
         cur_pos = misc.add_vec(
             cur_pos,
-            m4.apply(m_rot, [...misc.scale_vec(step_init, step), 1]).slice(0,3)
+            m4.apply(m_rot, [...misc.scale_vec(step_init, scale), 1]).slice(0,3)
         );
 
         // to transform base segment, rotate and scale then translate to cur pos
         // remember that the source code is in reverse order to application
         let m_seg = multiply_many([
-            m4.translation(...cur_pos),
-            m_scale,
             m_rot,
+            m_scale,
+            m4.translation(...cur_pos)
         ]);
         segments.push({
             'points': base_segment['points'].map(v => m4.apply(m_seg, v)),
@@ -184,10 +178,6 @@ function populate_buffers() {
 
     gl.bindBuffer(gl.ARRAY_BUFFER, normals_buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
-
-    //return number of triangles
-    if (positions.length != normals.length) console.error('normals and positions different lengths');
-    return positions.length / 3;
 }
 
 //clockwise triangles are back-facing, counter-clockwise are front-facing
@@ -240,22 +230,20 @@ function set_u_matrix(){
     gl.uniformMatrix4fv(u_view_matrix_loc, false, m4.gl_format(m_rot));
 }
 
-let time_ms;
 let last_time;
 let time_delta;
 
-function update(time) {
-    time_ms = time; // assign to global
+function update(time_ms) {
     time_delta = last_time ? time_ms - last_time : 10000;
     last_time = time_ms;
 
     update_seg_transforms();
-    let num_triangles = populate_buffers();
+    populate_buffers();
 
     set_u_matrix();
     gl.uniform3fv(u_light_loc, new Float32Array(light));
     gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.drawArrays(gl.TRIANGLES, 0, num_triangles);
+    gl.drawArrays(gl.TRIANGLES, 0, positions.length / 3);
     requestAnimationFrame(update);
 }
 
