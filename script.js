@@ -55,24 +55,17 @@ for (let t = 0; t < Math.PI * 2; t += 0.2) {
     c.push([0, radius*Math.sin(t), radius*Math.cos(t), 1]);
 }
 
-let transforms = [];
-//    // [translate in x, rotation around z, scale]
-//    [0.5, 0.4, 1],
-//    [0.5, 0.4, 1],
-//    [0.7, 0.4, 0.2],
-//    [0.5, 0.4, 1],
-//    [0.5, 0.4, 1]
-//];
-
-transforms.push([-1.5, 0, 1]);
+let transforms = [
+    //[step, [rx, ry, rz], scale]
+];
 
 let steps = 5;
 for (let i = 0; i < steps; i ++ ){
     let x = i / steps;
-    transforms.push([0.1, 1, 1]);
+    transforms.push([0.1, [1, 0, 1], 0.9]);
 }
 
-transforms.push([0.1, 0, 0]);
+transforms.push([0.1, [0, 0, 0], 0]);
 
 let base_segment = {'points': c, 'normals': c};
 let segments = [
@@ -84,33 +77,53 @@ function multiply_many(matrices) {
     return matrices.reduce((acc,cur) => m4.multiply(cur, acc), m4.identity());
 }
 
+// just the current seg rotation for normals and step
 let m_rot = m4.identity();
-let m_seg = m4.identity();
-let cur_pos = [0, 0, 0];
+// just the current seg scale - will be comined with rotation
+let m_scale = m4.identity();
+
+// a unit 4d vector pointing in inital "normal" direction of segment face
+let step_init = [1, 0, 0];
+
+let cur_pos = [-1, 0, 0];
+// push start segment
+segments.push({
+    'points': base_segment['points'].map(v => m4.apply(m4.translation(...cur_pos),v)),
+    'normals': base_segment['normals'].map(v => v)
+});
 
 for (let i = 0; i < transforms.length; i++){
-    let trans = transforms[i][0];
-    let rot = transforms[i][1];
+    let step = transforms[i][0];
+    let rots = transforms[i][1];
     let scale = transforms[i][2];
-    cur_pos = misc.add_vec(cur_pos, m4.apply(m_rot, [trans, 0, 0, 1]).slice(0,3));
-    m_rot = m4.multiply(m4.rotation_z(rot), m_rot);
-    // order of transformations (obvs reverse in source):
-    // translate to origin, scale, rotate, translate back + extra trans
-    let m_trans = multiply_many([
-        m4.translation(trans, 0, 0),
-        m4.rotation_z(rot),
-        m4.translation(...cur_pos),
-        m4.scale(scale),
-        m4.translation(...misc.scale_vec(cur_pos, -1)),
-    ]);
 
-    // add this as last step to transforms
-    m_seg = m4.multiply(m_trans, m_seg);
-    console.log(cur_pos, m_rot, m_seg);
+    // calculate new face orientation (rotations and scales)
+    // remember source code inreverse order to application
+    m_rot = multiply_many([
+        m4.rotation_z(rots[2]),
+        m4.rotation_y(rots[1]),
+        m4.rotation_x(rots[0]),
+        m_rot
+    ]);
+    m_scale = m4.multiply(m4.scale(scale), m_scale);
+    // update the current position by adding the rotated step
+    cur_pos = misc.add_vec(
+        cur_pos,
+        m4.apply(m_rot, [...misc.scale_vec(step_init, scale), 1]).slice(0,3)
+    );
+
+    // to transform base segment, rotate and scale then translate to cur pos
+    // remember that the source code is in reverse order to application
+    let m_seg = multiply_many([
+        m_rot,
+        m_scale,
+        m4.translation(...cur_pos)
+    ]);
     segments.push({
         'points': base_segment['points'].map(v => m4.apply(m_seg, v)),
         'normals': base_segment['normals'].map(v => m4.apply(m_rot, v))
     });
+
 }
 
 function hull_segs(a, b) {
