@@ -55,18 +55,28 @@ for (let t = 0; t < Math.PI * 2; t += 0.2) {
     c.push([0, radius*Math.sin(t), radius*Math.cos(t), 1]);
 }
 
-let transforms = [
-    // [translate in x, rotation around z, scale]
-    [0.5, 0.4, 1],
-    [0.5, 0.4, 1],
-    [0.7, 0.4, 0.2],
-    [0.5, 0.4, 1],
-    [0.5, 0.4, 1]
-];
+let transforms = [];
+//    // [translate in x, rotation around z, scale]
+//    [0.5, 0.4, 1],
+//    [0.5, 0.4, 1],
+//    [0.7, 0.4, 0.2],
+//    [0.5, 0.4, 1],
+//    [0.5, 0.4, 1]
+//];
+
+transforms.push([-1.5, 0, 1]);
+
+let steps = 5;
+for (let i = 0; i < steps; i ++ ){
+    let x = i / steps;
+    transforms.push([0.1, 1, 1]);
+}
+
+transforms.push([0.1, 0, 0]);
 
 let base_segment = {'points': c, 'normals': c};
 let segments = [
-    base_segment
+    //base_segment // don't start at origin, start at first transformation
 ];
 
 function multiply_many(matrices) {
@@ -79,24 +89,24 @@ let m_seg = m4.identity();
 let cur_pos = [0, 0, 0];
 
 for (let i = 0; i < transforms.length; i++){
-    console.log(cur_pos);
     let trans = transforms[i][0];
     let rot = transforms[i][1];
     let scale = transforms[i][2];
+    cur_pos = misc.add_vec(cur_pos, m4.apply(m_rot, [trans, 0, 0, 1]).slice(0,3));
     m_rot = m4.multiply(m4.rotation_z(rot), m_rot);
-    // order of transformations:
+    // order of transformations (obvs reverse in source):
     // translate to origin, scale, rotate, translate back + extra trans
     let m_trans = multiply_many([
-        m4.translation(...misc.scale_vec(cur_pos, -1)),
-        m4.scale(scale),
-        m4.translation(...cur_pos),
+        m4.translation(trans, 0, 0),
         m4.rotation_z(rot),
-        m4.translation(trans, 0, 0)
+        m4.translation(...cur_pos),
+        m4.scale(scale),
+        m4.translation(...misc.scale_vec(cur_pos, -1)),
     ]);
-    cur_pos = misc.add_vec(cur_pos, m4.apply(m_rot, [trans, 0, 0, 1]).slice(0,3));
 
     // add this as last step to transforms
     m_seg = m4.multiply(m_trans, m_seg);
+    console.log(cur_pos, m_rot, m_seg);
     segments.push({
         'points': base_segment['points'].map(v => m4.apply(m_seg, v)),
         'normals': base_segment['normals'].map(v => m4.apply(m_rot, v))
