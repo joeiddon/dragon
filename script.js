@@ -158,54 +158,39 @@ function generate_tube(segment_shape, transforms){
     return facets
 }
 
-let c = [
-    [  0.3 ,   0.3 ],
-    [  0.6 ,  -0.2 ],
-    [  0.2 ,  -0.5 ],
-    [ -0.2 ,  -0.5 ],
-    [ -0.6 ,  -0.2 ],
-    [ -0.3 ,   0.3 ],
-];
-
-let seg_transforms = [];
-
-function generate_tail_transforms(t) {
-    let tail_length = 8;
-    let num_segs = 10;
-    let segs = [];
-    for (let i = 0; i < num_segs; i++) {
-        let x  = i / num_segs;
-        segs.push([
-            tail_length / num_segs,
-            // ASJUST THESE PARAMETERS for different tail-wagging
-            [
-                Math.sin(t + 6 * x) / 20,
-                Math.sin(2 * t + x) / 35,
-                0
-            ],
-            0.92
-        ]);
-    }
-    segs.push([0.4, [0, 0, 0], 0]);
-    return segs;
-}
-
-function update_seg_transforms () {
-    seg_transforms = generate_tail_transforms(time_ms / 500);
-}
-
 function flatten_4d(array) {
     if (array.some(x => x[3] != 1)) console.error('told to flatten when w not 1', array);
     return array.map(v => v.slice(0,3)).flat();
+}
+
+function transform_facets(facets, m_all, m_rot){
+    return {
+        'points': facets['points'].map(v => m4.apply(m_all, v)),
+        'normals': facets['normals'].map(v => m4.apply(m_rot, v))
+    }
 }
 
 function populate_buffers() {
     let positions = [];
     let normals = [];
 
-    let tail = generate_tube(c, seg_transforms);
-    positions.push(...flatten_4d(tail['points']));
-    normals.push(...flatten_4d(tail['normals']));
+    // for each part we generate the tube then rotate and translate it
+    for (let part of parts) {
+        let seg_shape = part[0];
+        let seg_transforms = typeof(part[1]) == 'function' ? part[1](time_ms / 500) : part[1];
+        let rotations = part[2];
+        let translation = part[3];
+        let m_rot = multiply_many([
+            m4.rotation_z(rotations[2]),
+            m4.rotation_y(rotations[1]),
+            m4.rotation_x(rotations[0]),
+        ]);
+        let m_all = m4.multiply(m4.translation(...translation), m_rot);
+        let tube = generate_tube(seg_shape, seg_transforms);
+        tube = transform_facets(tube, m_all, m_rot);
+        positions.push(...flatten_4d(tube['points']));
+        normals.push(...flatten_4d(tube['normals']));
+    }
 
     gl.bindBuffer(gl.ARRAY_BUFFER, positions_buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
@@ -217,6 +202,109 @@ function populate_buffers() {
     if (positions.length != normals.length) console.error('normals and positions different lengths');
     return positions.length / 3;
 }
+
+let body_shape = [];
+for (let t = 0; t < Math.PI * 2; t += 0.4) body_shape.push([Math.sin(t), 0.6 * Math.cos(t)]);
+
+let parts = [
+    // [seg shape, seg transform func, rotation, translation]
+    // tail
+    [[
+        [  0.3 ,   0.3 ],
+        [  0.6 ,  -0.2 ],
+        [  0.2 ,  -0.5 ],
+        [ -0.2 ,  -0.5 ],
+        [ -0.6 ,  -0.2 ],
+        [ -0.3 ,   0.3 ],
+     ],
+     function(t) {
+         let tail_length = 6;
+         let num_segs = 10;
+         let segs = [];
+         for (let i = 0; i < num_segs; i++) {
+             let x  = i / num_segs;
+             segs.push([
+                 tail_length / num_segs,
+                 // ASJUST THESE PARAMETERS for different tail-wagging
+                 [
+                     Math.sin(t + 6 * x) / 20,
+                     Math.sin(2 * t + x) / 35,
+                     0
+                 ],
+                 0.92
+             ]);
+         }
+         segs.push([0.4, [0, 0, 0], 0]);
+         return segs;
+     },
+     [0, Math.PI, 0],
+     [0, 0, 0.4]
+    ],
+    //body
+    [//body_shape,
+
+     [
+        [  0.3 ,   0.2 ],
+        [  0.4 ,  -0.2 ],
+        [  0.2 ,  -0.3 ],
+        [    0 , -0.4],
+        [ -0.2 ,  -0.3 ],
+        [ -0.4 ,  -0.2 ],
+        [ -0.3 ,   0.2 ],
+
+     ],
+     function (t){
+         let prelim = [
+            [1, [0,0,0], 2.0],
+            [1, [0,0,0], 1.5],
+            [1, [0.2,0,0], 1.3],
+            [1, [-0.3,0,0], 1.1],
+            [1, [-0.3,0,0], 1.1],
+            [1, [0,0,0], 1.0],
+            [1, [0,0,0], 1.0],
+            [1, [0.1,0,0], 1.0],
+            [1, [0.1,0,0], 1.0],
+            [1, [0.1,0,0], 1.0],
+         ]
+         if (body_sliders['rots'].length) {
+             for (let i = 0; i < prelim.length; i++){
+                 prelim[i][1].splice(0, 1);
+                 prelim[i][1].unshift(body_sliders['rots'][i]());
+                 prelim[i].pop();
+                 prelim[i].push(body_sliders['scales'][i]());
+             }
+         } else {
+             for (let i = 0; i < prelim.length; i++){
+                console.log(prelim[i][1][0]);
+                 body_sliders['rots'].push(
+                     new_slider(prelim[i][1][0], -1, 1)
+                 );
+                }
+             document.getElementById('sliders').appendChild(document.createElement('br'));
+             for (let i = 0; i < prelim.length; i++)
+                 body_sliders['scales'].push(
+                     new_slider(prelim[i][2], 0, 3)
+                 );
+         }
+         return prelim;
+     },
+     [0, 0, 0],
+     [0, 0, 0]
+    ]
+];
+
+var body_sliders = {'rots': [], 'scales': []};
+
+function new_slider(init, min, max) {
+    let el = document.createElement('input');
+    el.type = 'range';
+    el.step = 0.01; el.min = min; el.max = max;
+    el.value = init;
+    document.getElementById('sliders').appendChild(el);
+    return () => el.value;
+}
+
+
 
 //clockwise triangles are back-facing, counter-clockwise are front-facing
 //switch two verticies to easily flip direction a triangle is facing
@@ -274,10 +362,9 @@ let time_delta;
 
 function update(time) {
     time_ms = time; // assign to global
-    time_delta = last_time ? time_ms - last_time : 10000;
-    last_time = time_ms;
+    //time_delta = last_time ? time_ms - last_time : 10000;
+    //last_time = time_ms;
 
-    update_seg_transforms();
     let num_triangles = populate_buffers();
 
     set_u_matrix();
@@ -287,7 +374,7 @@ function update(time) {
     requestAnimationFrame(update);
 }
 
-update();
+requestAnimationFrame(update);
 
 function toclipspace(x, y) {
     return [
