@@ -177,7 +177,12 @@ function generate_tail_transforms(t) {
         let x  = i / num_segs;
         segs.push([
             tail_length / num_segs,
-            [Math.sin(t + x) / 10, 0, 0],
+            // ASJUST THESE PARAMETERS for different tail-wagging
+            [
+                Math.sin(t + 6 * x) / 20,
+                Math.sin(2 * t + x) / 35,
+                0
+            ],
             0.92
         ]);
     }
