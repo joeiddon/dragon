@@ -48,14 +48,22 @@ let normals_buffer = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, normals_buffer);
 gl.vertexAttribPointer(a_normal_loc, 3, gl.FLOAT, false, 0, 0);
 
-let radius = 0.3;
 
-let c = [];
-for (let t = 0; t < Math.PI * 2; t += 0.5) {
-    c.push([0, radius*Math.sin(t), radius*Math.cos(t), 1]);
-}
+let c = [
+    [0, 0.5, 0.3, 1],
+    [0, -0.2, 0.6, 1],
+    [0, -0.5, 0.2, 1],
+    [0, -0.5, -0.2, 1],
+    [0, -0.2, -0.6, 1],
+    [0, 0.5, -0.3, 1],
+];
+//let radius = 0.15;
+//for (let t = 0; t < Math.PI * 2; t += 0.5) {
+//    c.push([0, radius*Math.sin(t), radius*Math.cos(t), 1]);
+//}
 
-let num_seg_transforms = 20;
+
+let num_seg_transforms = 40;
 let seg_length = 0.1;
 let seg_transforms = [
     //[step, [rx, ry, rz], scale]
@@ -78,7 +86,7 @@ function update_seg_transforms () {
         ];
 
         // add new transform to start of tranforms
-        seg_transforms.unshift([seg_length, joint, 0.95]);
+        seg_transforms.unshift([seg_length, joint, 0.97]);
     } else {
         seg_transforms.unshift(seg_transforms[0]);
     }
