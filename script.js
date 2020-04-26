@@ -178,12 +178,14 @@ function populate_buffers() {
     for (let part of parts) {
         let seg_shape = part[0];
         let seg_transforms = typeof(part[1]) == 'function' ? part[1](time_ms / 500) : part[1];
-        let rotations = part[2];
-        let translation = part[3];
+        let mirror = part[2];
+        let rotations = part[3];
+        let translation = part[4];
         let m_rot = multiply_many([
             m4.rotation_z(rotations[2]),
             m4.rotation_y(rotations[1]),
             m4.rotation_x(rotations[0]),
+            [[mirror ? -1 : 1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         ]);
         let m_all = m4.multiply(m4.translation(...translation), m_rot);
         let tube = generate_tube(seg_shape, seg_transforms);
@@ -203,13 +205,45 @@ function populate_buffers() {
     return positions.length / 3;
 }
 
-let body_shape = [];
-for (let t = 0; t < Math.PI * 2; t += 0.4) body_shape.push([Math.sin(t), 0.6 * Math.cos(t)]);
+function calculate_position_along_part(part, x) {
+    /* x should be float from 0 to 1. Returns 3d position of that proportion
+     * along tube part.
+     */
+    let transformations = part[1]; // does not support time functions accounting as is
+    let mirror = part[2];
+    let rotations = part[3];
+    let translation = part[4];
 
-let parts = [
-    // [seg shape, seg transform func, rotation, translation]
-    // tail
-    [[
+    let m_shape_rot = multiply_many([
+        m4.rotation_z(rotations[2]),
+        m4.rotation_y(rotations[1]),
+        m4.rotation_x(rotations[0]),
+        [[mirror ? -1 : 1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+    ]);
+
+    //start where it will get translated too
+    let cur_pos = m4.apply(m_shape_rot, [...translation, 1]);
+
+    let m_rot = m4.identity();
+    for (let i = 0; i < parseInt(x * transformations.length); i++) {
+        let step = transformations[i][0];
+        let rots = transformations[i][1];
+        m_rot = multiply_many([
+            m4.rotation_z(rots[2]),
+            m4.rotation_y(rots[1]),
+            m4.rotation_x(rots[0]),
+            m_rot
+        ]);
+        cur_pos = misc.add_vec(
+            cur_pos,
+            m4.apply(m_rot, [0, 0, step, 1]).slice(0,3)
+        );
+    }
+    return cur_pos;
+}
+
+let tail = [
+    [
         [  0.3 ,   0.3 ],
         [  0.6 ,  -0.2 ],
         [  0.2 ,  -0.5 ],
@@ -237,12 +271,12 @@ let parts = [
          segs.push([0.4, [0, 0, 0], 0]);
          return segs;
      },
+     false,
      [0, Math.PI, 0],
      [0, 0, 0.4]
-    ],
-    //body
-    [//body_shape,
+];
 
+let body = [
      [
         [  0.3 ,   0.2 ],
         [  0.4 ,  -0.2 ],
@@ -253,45 +287,139 @@ let parts = [
         [ -0.3 ,   0.2 ],
 
      ],
-     function (t){
-         let prelim = [
+        [
             [1, [0,0,0], 2.0],
-            [1, [0,0,0], 1.5],
-            [1, [0.2,0,0], 1.3],
-            [1, [-0.3,0,0], 1.1],
-            [1, [-0.3,0,0], 1.1],
-            [1, [0,0,0], 1.0],
-            [1, [0,0,0], 1.0],
-            [1, [0.1,0,0], 1.0],
-            [1, [0.1,0,0], 1.0],
-            [1, [0.1,0,0], 1.0],
-         ]
-         if (body_sliders['rots'].length) {
-             for (let i = 0; i < prelim.length; i++){
-                 prelim[i][1].splice(0, 1);
-                 prelim[i][1].unshift(body_sliders['rots'][i]());
-                 prelim[i].pop();
-                 prelim[i].push(body_sliders['scales'][i]());
-             }
-         } else {
-             for (let i = 0; i < prelim.length; i++){
-                console.log(prelim[i][1][0]);
-                 body_sliders['rots'].push(
-                     new_slider(prelim[i][1][0], -1, 1)
-                 );
-                }
-             document.getElementById('sliders').appendChild(document.createElement('br'));
-             for (let i = 0; i < prelim.length; i++)
-                 body_sliders['scales'].push(
-                     new_slider(prelim[i][2], 0, 3)
-                 );
-         }
-         return prelim;
-     },
+            [1, [0,0,0], 1.1],
+            [1, [0,0,0], 1.3],
+            [1, [-0.2,0,0], 1.1],
+            [1, [-0.2,0,0], 1.1],
+            [1, [0,0,0], 1.1],
+            [1, [-0.1,0,0], 1.0],
+            [1, [-0.1,0,0], 1.0],
+            [1, [-0.1,0,0], 0.7],
+            [1, [0.3,0,0], 0.7],
+         ],
+    false,
      [0, 0, 0],
      [0, 0, 0]
-    ]
 ];
+
+let leg1 = [
+    [
+        [  0.3 ,   0.2 ],
+        [  0.4 ,  -0.2 ],
+        [  0.2 ,  -0.3 ],
+        [    0 , -0.4],
+        [ -0.2 ,  -0.3 ],
+        [ -0.4 ,  -0.2 ],
+        [ -0.3 ,   0.2 ],
+    ],
+    [
+            [0.3, [0,0,0], 1.4],
+            [0.5, [0,0,0], 1.2],
+            [0.5, [0,0,0], 1.2],
+            [0.5, [0.5,1.1,0], 1],
+            [0.5, [0.3,0.3,0], 0.7],
+            [0.5, [0,0,0], 1],
+            [0.5, [0,0,-0.4], 0.8],
+            [0.5, [0,0,-0.5], 1.2],
+            [0.5, [0,0,-0.2], 1],
+            [0.2, [0,0,0.2], 1.5],
+            [0.05, [0,0,0], 1],
+            [0.2, [0,0,0], 0.7],
+            [0.0, [0,0,0], 0]
+     ],
+    false,
+    [0, Math.PI / 2, 0],
+    calculate_position_along_part(body, 0.35)
+];
+
+let leg2 = [
+    [
+        [  0.3 ,   0.2 ],
+        [  0.4 ,  -0.2 ],
+        [  0.2 ,  -0.3 ],
+        [    0 , -0.4],
+        [ -0.2 ,  -0.3 ],
+        [ -0.4 ,  -0.2 ],
+        [ -0.3 ,   0.2 ],
+    ],
+    [
+            [0.4, [0,0,0], 1.4],
+            [0.5, [0,0,0], 1.2],
+            [0.5, [0,0,0], 1.2],
+            [0.5, [0.5,1.1,0], 1],
+            [0.5, [0.3,0.3,0], 0.7],
+            [0.5, [0,0,0], 1],
+            [0.5, [0,0,-0.4], 0.8],
+            [0.7, [0,0,-0.5], 1.2],
+            [0.7, [0,0,-0.2], 1],
+            [0.2, [0,0,0.2], 1.5],
+            [0.05, [0,0,0], 1],
+            [0.2, [0,0,0], 0.7],
+            [0.0, [0,0,0], 0]
+     ],
+    false,
+    [0, Math.PI / 2, 0],
+    calculate_position_along_part(body, 0.6)
+];
+
+
+let leg3 = leg1.map(a => a); //cheap copy of some sub arrays
+let leg4 = leg2.map(a => a); //cheap copy of some sub arrays
+
+leg3[2] = true;
+leg4[2] = true;
+leg3[3] = [0, -Math.PI / 2, 0];
+leg4[3] = [0, -Math.PI / 2, 0];
+
+let parts = [
+    // [seg shape, seg transform func, rotation, translation]
+    tail,
+    body,
+    leg1,
+    leg2,
+    leg3,
+    leg4
+];
+
+
+
+//     function (t){
+//         let prelim = [
+//            [0.5, [0,0,0], 1.4],
+//            [0.5, [0.4,0,0], 1],
+//            [0.5, [0.4,0,0], 1],
+//            [0.5, [0.3,-0.4,0], 0.7],
+//            [0.5, [0,-0.3,0], 0.8],
+//            [0.5, [0,0,0], 1.2],
+//            [0.5, [0,0,0], 1],
+//         ]
+//         if (body_sliders['rots'].length) {
+//             for (let i = 0; i < prelim.length; i++){
+//                 prelim[i][1].splice(0, 1);
+//                 prelim[i][1].unshift(body_sliders['rots'][i]());
+//                 prelim[i].pop();
+//                 prelim[i].push(body_sliders['scales'][i]());
+//             }
+//         } else {
+//             for (let i = 0; i < prelim.length; i++){
+//                console.log(prelim[i][1][0]);
+//                 body_sliders['rots'].push(
+//                     new_slider(prelim[i][1][0], -1, 1)
+//                 );
+//                }
+//             document.getElementById('sliders').appendChild(document.createElement('br'));
+//             for (let i = 0; i < prelim.length; i++)
+//                 body_sliders['scales'].push(
+//                     new_slider(prelim[i][2], 0, 3)
+//                 );
+//         }
+//         return prelim;
+//     },
+
+
+
 
 var body_sliders = {'rots': [], 'scales': []};
 
