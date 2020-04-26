@@ -48,106 +48,60 @@ let normals_buffer = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, normals_buffer);
 gl.vertexAttribPointer(a_normal_loc, 3, gl.FLOAT, false, 0, 0);
 
-
-let c = [
-    [0, 0.5, 0.3, 1],
-    [0, -0.2, 0.6, 1],
-    [0, -0.5, 0.2, 1],
-    [0, -0.5, -0.2, 1],
-    [0, -0.2, -0.6, 1],
-    [0, 0.5, -0.3, 1],
-];
-//let radius = 0.15;
-//for (let t = 0; t < Math.PI * 2; t += 0.5) {
-//    c.push([0, radius*Math.sin(t), radius*Math.cos(t), 1]);
-//}
-
-
-let num_seg_transforms = 40;
-let seg_length = 0.1;
-let seg_transforms = [
-    //[step, [rx, ry, rz], scale]
-    // the end of the tail just sits here
-    [0.5, [0, 0, 0], 0]
-];
-
-let seg_update_interval_ms = 10;
-let last_seg_update_ms;
-
-function update_seg_transforms () {
-    if (time_ms - last_seg_update_ms < seg_update_interval_ms) return;
-    last_seg_update_ms = time_ms;
-
-    if (Math.random() < 0.1) {
-        let joint = [
-            0,
-            (Math.random() - 0.5) * 0.2,
-            (Math.random() - 0.5) * 0.2
-        ];
-
-        // add new transform to start of tranforms
-        seg_transforms.unshift([seg_length, joint, 0.97]);
-    } else {
-        seg_transforms.unshift(seg_transforms[0]);
-    }
-
-    // remove other end of transforms
-    while (seg_transforms.length > num_seg_transforms) {
-        // remove the tranform just before the final end of tail transform
-        seg_transforms.splice(seg_transforms.length - 2, 1);
-    }
+function multiply_many(matrices) {
+    // multiplies in left to right order, so that the first index is the
+    // furthest left / last matrix. This means accumulator goes on left so
+    // that first index ends up on the furthest left and identity ends up
+    // on furthest left hand side ! This is definitely right - have tested
+    return matrices.reduce((acc,cur) => m4.multiply(acc, cur), m4.identity());
 }
 
-function populate_buffers() {
+function generate_tube(segment_shape, transforms){
+    /*
+     * Extrudes segment_shape according to transforms from origin into positive
+     * z-direction.
+     *
+     * the normals of the segment shape are assumed to be going straight out
+     * from the origin to each vertex
+     * arguments:
+     * segment_shape - an array of 2d XY points to describe shape of segment
+     * transforms - an array of [step, [rx, ry, rx], scale] transformations
+     */
 
-    let base_segment = {'points': c, 'normals': c};
+    let base_segment = {
+        'points': segment_shape.map(v => [v[0], v[1], 0, 1]),
+        'normals': segment_shape.map(v => [v[0], v[1], 0, 1])
+    }
     let segments = [
-        //base_segment // don't start at origin, start at first transformation
+        base_segment
     ];
 
-    function multiply_many(matrices) {
-        // multiplies in left to right order, so that the first index is the
-        // furthest left / last matrix. This means accumulator goes on left so
-        // that first index ends up on the furthest left and identity ends up
-        // on furthest left hand side ! This is definitely right - have tested
-        return matrices.reduce((acc,cur) => m4.multiply(acc, cur), m4.identity());
-    }
+    let cur_pos = [0, 0, 0];
 
-    // just the current seg rotation for normals and step
+    // the current seg rotation for normals and step
     let m_rot = m4.identity();
-    // just the current seg scale - will be comined with rotation
+    // the current seg scale - will be comined with rotation to get new segment
     let m_scale = m4.identity();
 
-    // a unit 4d vector pointing in inital "normal" direction of segment face
-    let step_init = [1, 0, 0];
-
-    let cur_pos = [0, 0, 0];
-    // push start segment
-    segments.push({
-        'points': base_segment['points'].map(v => m4.apply(m4.translation(...cur_pos),v)),
-        'normals': base_segment['normals'].map(v => v)
-    });
-
-    for (let i = 0; i < seg_transforms.length; i++){
-        let step = seg_transforms[i][0];
-        let rots = seg_transforms[i][1];
-        let scale = seg_transforms[i][2];
+    for (let transform of transforms) {
+        let step = transform[0];
+        let rotations = transform[1];
+        let scale = transform[2];
 
         // calculate new face orientation (rotations and scales)
         // remember source code inreverse order to application
         m_rot = multiply_many([
-            m4.rotation_z(rots[2]),
-            m4.rotation_y(rots[1]),
-            m4.rotation_x(rots[0]),
+            m4.rotation_z(rotations[2]),
+            m4.rotation_y(rotations[1]),
+            m4.rotation_x(rotations[0]),
             m_rot
         ]);
         m_scale = m4.multiply(m4.scale(scale), m_scale);
-        // update the current position by adding the rotated step
+        // update the current position by adding the rotated z-direction step
         cur_pos = misc.add_vec(
             cur_pos,
-            m4.apply(m_rot, [...misc.scale_vec(step_init, step), 1]).slice(0,3)
+            m4.apply(m_rot, [0, 0, step, 1]).slice(0,3)
         );
-
         // to transform base segment, rotate and scale then translate to cur pos
         // remember that the source code is in reverse order to application
         let m_seg = multiply_many([
@@ -159,13 +113,13 @@ function populate_buffers() {
             'points': base_segment['points'].map(v => m4.apply(m_seg, v)),
             'normals': base_segment['normals'].map(v => m4.apply(m_rot, v))
         });
-
     }
 
     function hull_segs(a, b) {
-        // takes two segments of points and returns triangles and normals ready
-        // for passing straight to webgl
-        let positions = [];
+        /* takes two segments and returns facets (triangles and
+         * normals) note that the points and normals are 4d
+         */
+        let points = [];
         let normals = [];
         if (a['points'].length != a['normals'].length ||
               b['points'].length != b['normals'].length ||
@@ -173,30 +127,80 @@ function populate_buffers() {
             console.error('segments not same size!');
         for (let i = 0; i < a['points'].length; i++){
             let ni = i + 1 == a['points'].length ? 0 : i + 1;
-            // verts is used to get the points and normals
+            // verts describes two triangles to connect this index around the
+            // segment to the next segment (i to ni)
             let verts = [
                 [a, i], [a, ni], [b, i],
                 [b, i], [a, ni], [b, ni]
             ];
             for (let v of verts) {
-                positions.push(...v[0]['points'][v[1]].slice(0,3));
-                normals.push(...v[0]['normals'][v[1]].slice(0,3));
+                points.push(v[0]['points'][v[1]]);
+                normals.push(v[0]['normals'][v[1]]);
             }
-            // vs.push(a[i].slice(0,3), a[i+1].slice(0,3), b[i].slice(0,3));
-            // vs.push(a[i+1].slice(0,3), b[i].slice(0,3), b[i+1].slice(0,3));
-
         }
-        return [positions, normals];
+        return {
+            'points': points,
+            'normals': normals
+        }
     }
 
+    let facets = {
+        'points': [],
+        'normals': []
+    }
+
+    for (let i = 0; i < segments.length - 1; i++){
+        let hulled = hull_segs(segments[i], segments[i+1]);
+        facets['points'].push(...hulled['points']);
+        facets['normals'].push(...hulled['normals']);
+    }
+
+    return facets
+}
+
+let c = [
+    [  0.3 ,   0.3 ],
+    [  0.6 ,  -0.2 ],
+    [  0.2 ,  -0.5 ],
+    [ -0.2 ,  -0.5 ],
+    [ -0.6 ,  -0.2 ],
+    [ -0.3 ,   0.3 ],
+];
+
+let seg_transforms = [];
+
+function generate_tail_transforms(t) {
+    let tail_length = 8;
+    let num_segs = 10;
+    let segs = [];
+    for (let i = 0; i < num_segs; i++) {
+        let x  = i / num_segs;
+        segs.push([
+            tail_length / num_segs,
+            [Math.sin(t + x) / 10, 0, 0],
+            0.92
+        ]);
+    }
+    segs.push([0.4, [0, 0, 0], 0]);
+    return segs;
+}
+
+function update_seg_transforms () {
+    seg_transforms = generate_tail_transforms(time_ms / 500);
+}
+
+function flatten_4d(array) {
+    if (array.some(x => x[3] != 1)) console.error('told to flatten when w not 1', array);
+    return array.map(v => v.slice(0,3)).flat();
+}
+
+function populate_buffers() {
     let positions = [];
     let normals = [];
 
-    for (let i = 0; i < segments.length - 1; i++){
-        let faces = hull_segs(segments[i], segments[i+1]);
-        positions.push(...faces[0]);
-        normals.push(...faces[1]);
-    }
+    let tail = generate_tube(c, seg_transforms);
+    positions.push(...flatten_4d(tail['points']));
+    normals.push(...flatten_4d(tail['normals']));
 
     gl.bindBuffer(gl.ARRAY_BUFFER, positions_buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
@@ -298,5 +302,5 @@ canvas.addEventListener('mousemove', function(e) {
     }
 });
 
-canvas.addEventListener('wheel', e => {mouse_charge.magnitude += e.deltaY / 200});
+canvas.addEventListener('wheel', e => {cam = misc.scale_vec(cam, 1 + e.deltaY / 200);});
 //canvas.addEventListener('click', e => {charges.push({position: [...mouse_charge.position], magnitude: mouse_charge.magnitude})}); // unpacked so creates new object
