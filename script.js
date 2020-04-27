@@ -91,9 +91,10 @@ function generate_tube(segment_shape, transforms){
         // calculate new face orientation (rotations and scales)
         // remember source code inreverse order to application
         m_rot = multiply_many([
-            m4.rotation_z(rotations[2]),
+            // order of z, x, y chosen specially - twist -> pitch -> yaw
             m4.rotation_y(rotations[1]),
             m4.rotation_x(rotations[0]),
+            m4.rotation_z(rotations[2]),
             m_rot
         ]);
         m_scale = m4.multiply(m4.scale(scale), m_scale);
@@ -182,9 +183,9 @@ function populate_buffers() {
         let rotations = part[3];
         let translation = part[4];
         let m_rot = multiply_many([
-            m4.rotation_z(rotations[2]),
             m4.rotation_y(rotations[1]),
             m4.rotation_x(rotations[0]),
+            m4.rotation_z(rotations[2]),
             [[mirror ? -1 : 1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         ]);
         let m_all = m4.multiply(m4.translation(...translation), m_rot);
@@ -215,9 +216,9 @@ function calculate_position_along_part(part, x) {
     let translation = part[4];
 
     let m_shape_rot = multiply_many([
-        m4.rotation_z(rotations[2]),
         m4.rotation_y(rotations[1]),
         m4.rotation_x(rotations[0]),
+        m4.rotation_z(rotations[2]),
         [[mirror ? -1 : 1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
     ]);
 
@@ -229,9 +230,9 @@ function calculate_position_along_part(part, x) {
         let step = transformations[i][0];
         let rots = transformations[i][1];
         m_rot = multiply_many([
-            m4.rotation_z(rots[2]),
             m4.rotation_y(rots[1]),
             m4.rotation_x(rots[0]),
+            m4.rotation_z(rots[2]),
             m_rot
         ]);
         cur_pos = misc.add_vec(
@@ -290,14 +291,13 @@ let body = [
         [
             [1, [0,0,0], 2.0],
             [1, [0,0,0], 1.1],
-            [1, [0,0,0], 1.3],
-            [1, [-0.2,0,0], 1.1],
-            [1, [-0.2,0,0], 1.1],
-            [1, [0,0,0], 1.1],
-            [1, [-0.1,0,0], 1.0],
-            [1, [-0.1,0,0], 1.0],
+            [1, [0,0,0], 1.4],
+            [1, [-0.2,0,0], 1.3],
+            [1, [-0.4,0,0], 1.1],
+            [1, [-0.6,0,0], 0.9],
             [1, [-0.1,0,0], 0.7],
-            [1, [0.3,0,0], 0.7],
+            [1, [-0.1,0,0], 0.9],
+            [1, [0.3,0,0], 1],
          ],
     false,
      [0, 0, 0],
@@ -316,8 +316,8 @@ let leg1 = [
     ],
     [
             [0.3, [0,0,0], 1.4],
-            [0.5, [0,0,0], 1.2],
-            [0.5, [0,0,0], 1.2],
+            [0.5, [0,0,0], 1.1],
+            [0.5, [0,0,0], 1.1],
             [0.5, [0.5,1.1,0], 1],
             [0.5, [0.3,0.3,0], 0.7],
             [0.5, [0,0,0], 1],
@@ -346,14 +346,14 @@ let leg2 = [
     ],
     [
             [0.4, [0,0,0], 1.4],
-            [0.5, [0,0,0], 1.2],
-            [0.5, [0,0,0], 1.2],
-            [0.5, [0.5,1.1,0], 1],
+            [0.7, [0,0,0], 1.1],
+            [0.7, [0,0,0], 1.1],
+            [0.5, [1,0.6,0], 1],
             [0.5, [0.3,0.3,0], 0.7],
             [0.5, [0,0,0], 1],
-            [0.5, [0,0,-0.4], 0.8],
-            [0.7, [0,0,-0.5], 1.2],
-            [0.7, [0,0,-0.2], 1],
+            [0.5, [0,0,-0.2], 0.8],
+            [0.5, [0,0,-0.3], 1.2],
+            [0.5, [0,0,-0.1], 1],
             [0.2, [0,0,0.2], 1.5],
             [0.05, [0,0,0], 1],
             [0.2, [0,0,0], 0.7],
@@ -373,6 +373,37 @@ leg4[2] = true;
 leg3[3] = [0, -Math.PI / 2, 0];
 leg4[3] = [0, -Math.PI / 2, 0];
 
+let wing1 = [
+    [
+        [ -0.2,  0],
+        [   0, -0.2],
+        [  0.2,  0],
+        [   0,  0.2]
+    ],
+    function () {
+        let wing_length = 12;
+        let angles = [-0.06, -0.25, -0.1, -0.05, -0.05];
+        let steps = 30;
+        let a = [];
+        for (let i = 0; i < steps; i++){
+            a.push(
+            [
+                wing_length / steps,
+                [angles[parseInt(i/steps * angles.length)], 0, 0],
+                0.97
+            ]);
+        }
+        return a;
+    },
+    false,
+    [-0.4, 0, -1],
+    misc.add_vec(calculate_position_along_part(body, 0.7), [1, 0, -0.3])
+];
+
+let wing2 = wing1.map(v=>v);
+wing2[3] = [-0.4, 0, 1];
+wing2[4] = misc.add_vec(calculate_position_along_part(body, 0.7), [-1, 0, -0.3])
+
 let parts = [
     // [seg shape, seg transform func, rotation, translation]
     tail,
@@ -380,7 +411,9 @@ let parts = [
     leg1,
     leg2,
     leg3,
-    leg4
+    leg4,
+    wing1,
+    wing2,
 ];
 
 
@@ -453,7 +486,7 @@ function perspective_mat(fov, aspect, near, far){
 
 let fov = misc.deg_to_rad(50);
 let near = 0.1; //closest z-coordinate to be rendered
-let far = 50; //furthest z-coordianted to be rendered
+let far = 100; //furthest z-coordianted to be rendered
 let m_perspective;
 
 function calculate_perspective_matrix() {
