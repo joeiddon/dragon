@@ -381,6 +381,8 @@ function form_dragon() {
                     0.97
                 ]);
             }
+            // closing spike !
+            a.push([0.3, [0, 0, 0], 0]);
             return a;
         },
         false,
@@ -424,17 +426,25 @@ function form_dragon() {
         points.push(...transformed_tube['points']);
         normals.push(...transformed_tube['normals']);
     }
-    // generate wing fabrics
+    // generate wing fabric using a triangle fan arrangement
     let to_4d = v => [...v, 1];
-    let num_attachments = 5;
-    //for (let i = 0; i < num_attachments - 1; i++){
+    let num_attachments = 12;
+    for (let i = 0; i < num_attachments; i++){
         points.push(to_4d(calculate_position_along_part(wing1, 0)));
-        points.push(to_4d(calculate_position_along_part(wing1, 0.5))); //i / num_attachments)));
-        points.push(to_4d(calculate_position_along_part(wing1, 1))); // (i + 1) / num_attachments)));
+        points.push(to_4d(calculate_position_along_part(wing1, i / num_attachments)));
+        points.push(to_4d(calculate_position_along_part(wing1, (i + 1) / num_attachments)));
         normals.push([0, 1, 0, 1]);
         normals.push([0, 1, 0, 1]);
         normals.push([0, 1, 0, 1]);
-    //}
+    }
+    for (let i = 0; i < num_attachments; i++){
+        points.push(to_4d(calculate_position_along_part(wing2, 0)));
+        points.push(to_4d(calculate_position_along_part(wing2, i / num_attachments)));
+        points.push(to_4d(calculate_position_along_part(wing2, (i + 1) / num_attachments)));
+        normals.push([0, 1, 0, 1]);
+        normals.push([0, 1, 0, 1]);
+        normals.push([0, 1, 0, 1]);
+    }
 
     return {
         'points': points,
