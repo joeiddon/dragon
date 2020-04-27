@@ -175,25 +175,9 @@ function populate_buffers() {
     let positions = [];
     let normals = [];
 
-    // for each part we generate the tube then rotate and translate it
-    for (let part of parts) {
-        let seg_shape = part[0];
-        let seg_transforms = typeof(part[1]) == 'function' ? part[1](time_ms / 500) : part[1];
-        let mirror = part[2];
-        let rotations = part[3];
-        let translation = part[4];
-        let m_rot = multiply_many([
-            m4.rotation_y(rotations[1]),
-            m4.rotation_x(rotations[0]),
-            m4.rotation_z(rotations[2]),
-            [[mirror ? -1 : 1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        ]);
-        let m_all = m4.multiply(m4.translation(...translation), m_rot);
-        let tube = generate_tube(seg_shape, seg_transforms);
-        tube = transform_facets(tube, m_all, m_rot);
-        positions.push(...flatten_4d(tube['points']));
-        normals.push(...flatten_4d(tube['normals']));
-    }
+    let dragon = form_dragon();
+    positions.push(...flatten_4d(dragon['points']));
+    normals.push(...flatten_4d(dragon['normals']));
 
     gl.bindBuffer(gl.ARRAY_BUFFER, positions_buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
@@ -210,20 +194,12 @@ function calculate_position_along_part(part, x) {
     /* x should be float from 0 to 1. Returns 3d position of that proportion
      * along tube part.
      */
-    let transformations = part[1]; // does not support time functions accounting as is
+    let transformations = typeof(part[1]) == 'function' ? part[1](time_ms / 500) : part[1];
     let mirror = part[2];
     let rotations = part[3];
     let translation = part[4];
 
-    let m_shape_rot = multiply_many([
-        m4.rotation_y(rotations[1]),
-        m4.rotation_x(rotations[0]),
-        m4.rotation_z(rotations[2]),
-        [[mirror ? -1 : 1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-    ]);
-
-    //start where it will get translated too
-    let cur_pos = m4.apply(m_shape_rot, [...translation, 1]);
+    let cur_pos = [0, 0, 0];
 
     let m_rot = m4.identity();
     for (let i = 0; i < parseInt(x * transformations.length); i++) {
@@ -240,181 +216,233 @@ function calculate_position_along_part(part, x) {
             m4.apply(m_rot, [0, 0, step, 1]).slice(0,3)
         );
     }
+
+    // after computing the position along the dragon then need to rotate that
+    // position and add the shape translation
+    //
+    let m_shape_rot = multiply_many([
+        m4.rotation_y(rotations[1]),
+        m4.rotation_x(rotations[0]),
+        m4.rotation_z(rotations[2]),
+        [[mirror ? -1 : 1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+    ]);
+    cur_pos = misc.add_vec(translation, m4.apply(m_shape_rot, [...cur_pos, 1]).slice(0,3));
     return cur_pos;
 }
 
-let tail = [
-    [
-        [  0.3 ,   0.3 ],
-        [  0.6 ,  -0.2 ],
-        [  0.2 ,  -0.5 ],
-        [ -0.2 ,  -0.5 ],
-        [ -0.6 ,  -0.2 ],
-        [ -0.3 ,   0.3 ],
-     ],
-     function(t) {
-         let tail_length = 6;
-         let num_segs = 10;
-         let segs = [];
-         for (let i = 0; i < num_segs; i++) {
-             let x  = i / num_segs;
-             segs.push([
-                 tail_length / num_segs,
-                 // ASJUST THESE PARAMETERS for different tail-wagging
-                 [
-                     Math.sin(t + 6 * x) / 20,
-                     Math.sin(2 * t + x) / 35,
-                     0
-                 ],
-                 0.92
-             ]);
-         }
-         segs.push([0.4, [0, 0, 0], 0]);
-         return segs;
-     },
-     false,
-     [0, Math.PI, 0],
-     [0, 0, 0.4]
-];
-
-let body = [
-     [
-        [  0.3 ,   0.2 ],
-        [  0.4 ,  -0.2 ],
-        [  0.2 ,  -0.3 ],
-        [    0 , -0.4],
-        [ -0.2 ,  -0.3 ],
-        [ -0.4 ,  -0.2 ],
-        [ -0.3 ,   0.2 ],
-
-     ],
+function form_dragon() {
+    let tail = [
         [
-            [1, [0,0,0], 2.0],
-            [1, [0,0,0], 1.1],
-            [1, [0,0,0], 1.4],
-            [1, [-0.2,0,0], 1.3],
-            [1, [-0.4,0,0], 1.1],
-            [1, [-0.6,0,0], 0.9],
-            [1, [-0.1,0,0], 0.7],
-            [1, [-0.1,0,0], 0.9],
-            [1, [0.3,0,0], 1],
+            [  0.3 ,   0.3 ],
+            [  0.6 ,  -0.2 ],
+            [  0.2 ,  -0.5 ],
+            [ -0.2 ,  -0.5 ],
+            [ -0.6 ,  -0.2 ],
+            [ -0.3 ,   0.3 ],
          ],
-    false,
-     [0, 0, 0],
-     [0, 0, 0]
-];
+         function(t) {
+             let tail_length = 6;
+             let num_segs = 10;
+             let segs = [];
+             for (let i = 0; i < num_segs; i++) {
+                 let x  = i / num_segs;
+                 segs.push([
+                     tail_length / num_segs,
+                     // ASJUST THESE PARAMETERS for different tail-wagging
+                     [
+                         Math.sin(t + 6 * x) / 20,
+                         Math.sin(2 * t + x) / 35,
+                         0
+                     ],
+                     0.92
+                 ]);
+             }
+             segs.push([0.4, [0, 0, 0], 0]);
+             return segs;
+         },
+         false,
+         [0, Math.PI, 0],
+         [0, 0, 0.4]
+    ];
 
-let leg1 = [
-    [
-        [  0.3 ,   0.2 ],
-        [  0.4 ,  -0.2 ],
-        [  0.2 ,  -0.3 ],
-        [    0 , -0.4],
-        [ -0.2 ,  -0.3 ],
-        [ -0.4 ,  -0.2 ],
-        [ -0.3 ,   0.2 ],
-    ],
-    [
-            [0.3, [0,0,0], 1.4],
-            [0.5, [0,0,0], 1.1],
-            [0.5, [0,0,0], 1.1],
-            [0.5, [0.5,1.1,0], 1],
-            [0.5, [0.3,0.3,0], 0.7],
-            [0.5, [0,0,0], 1],
-            [0.5, [0,0,-0.4], 0.8],
-            [0.5, [0,0,-0.5], 1.2],
-            [0.5, [0,0,-0.2], 1],
-            [0.2, [0,0,0.2], 1.5],
-            [0.05, [0,0,0], 1],
-            [0.2, [0,0,0], 0.7],
-            [0.0, [0,0,0], 0]
-     ],
-    false,
-    [0, Math.PI / 2, 0],
-    calculate_position_along_part(body, 0.35)
-];
+    let body = [
+         [
+            [  0.3 ,   0.2 ],
+            [  0.4 ,  -0.2 ],
+            [  0.2 ,  -0.3 ],
+            [    0 , -0.4],
+            [ -0.2 ,  -0.3 ],
+            [ -0.4 ,  -0.2 ],
+            [ -0.3 ,   0.2 ],
 
-let leg2 = [
-    [
-        [  0.3 ,   0.2 ],
-        [  0.4 ,  -0.2 ],
-        [  0.2 ,  -0.3 ],
-        [    0 , -0.4],
-        [ -0.2 ,  -0.3 ],
-        [ -0.4 ,  -0.2 ],
-        [ -0.3 ,   0.2 ],
-    ],
-    [
-            [0.4, [0,0,0], 1.4],
-            [0.7, [0,0,0], 1.1],
-            [0.7, [0,0,0], 1.1],
-            [0.5, [1,0.6,0], 1],
-            [0.5, [0.3,0.3,0], 0.7],
-            [0.5, [0,0,0], 1],
-            [0.5, [0,0,-0.2], 0.8],
-            [0.5, [0,0,-0.3], 1.2],
-            [0.5, [0,0,-0.1], 1],
-            [0.2, [0,0,0.2], 1.5],
-            [0.05, [0,0,0], 1],
-            [0.2, [0,0,0], 0.7],
-            [0.0, [0,0,0], 0]
-     ],
-    false,
-    [0, Math.PI / 2, 0],
-    calculate_position_along_part(body, 0.6)
-];
-
-
-let leg3 = leg1.map(a => a); //cheap copy of some sub arrays
-let leg4 = leg2.map(a => a); //cheap copy of some sub arrays
-
-leg3[2] = true;
-leg4[2] = true;
-leg3[3] = [0, -Math.PI / 2, 0];
-leg4[3] = [0, -Math.PI / 2, 0];
-
-let wing1 = [
-    [
-        [ -0.2,  0],
-        [   0, -0.2],
-        [  0.2,  0],
-        [   0,  0.2]
-    ],
-    function () {
-        let wing_length = 12;
-        let angles = [-0.06, -0.25, -0.1, -0.05, -0.05];
-        let steps = 30;
-        let a = [];
-        for (let i = 0; i < steps; i++){
-            a.push(
+         ],
             [
-                wing_length / steps,
-                [angles[parseInt(i/steps * angles.length)], 0, 0],
-                0.97
-            ]);
-        }
-        return a;
-    },
-    false,
-    [-0.4, 0, -1],
-    misc.add_vec(calculate_position_along_part(body, 0.7), [1, 0, -0.3])
-];
+                [1, [0,0,0], 2.0],
+                [1, [0,0,0], 1.1],
+                [1, [0,0,0], 1.4],
+                [1, [-0.2,0,0], 1.3],
+                [1, [-0.4,0,0], 1.1],
+                [1, [-0.6,0,0], 0.9],
+                [1, [-0.1,0,0], 0.7],
+                [1, [-0.1,0,0], 0.9],
+                [1, [0.3,0,0], 1],
+             ],
+        false,
+         [0, 0, 0],
+         [0, 0, 0]
+    ];
 
-let wing2 = wing1.map(v=>v);
-wing2[3] = [-0.4, 0, 1];
-wing2[4] = misc.add_vec(calculate_position_along_part(body, 0.7), [-1, 0, -0.3])
+    let leg1 = [
+        [
+            [  0.3 ,   0.2 ],
+            [  0.4 ,  -0.2 ],
+            [  0.2 ,  -0.3 ],
+            [    0 , -0.4],
+            [ -0.2 ,  -0.3 ],
+            [ -0.4 ,  -0.2 ],
+            [ -0.3 ,   0.2 ],
+        ],
+        [
+                [0.3, [0,0,0], 1.4],
+                [0.5, [0,0,0], 1.1],
+                [0.5, [0,0,0], 1.1],
+                [0.5, [0.5,1.1,0], 1],
+                [0.5, [0.3,0.3,0], 0.7],
+                [0.5, [0,0,0], 1],
+                [0.5, [0,0,-0.4], 0.8],
+                [0.5, [0,0,-0.5], 1.2],
+                [0.5, [0,0,-0.2], 1],
+                [0.2, [0,0,0.2], 1.5],
+                [0.05, [0,0,0], 1],
+                [0.2, [0,0,0], 0.7],
+                [0.0, [0,0,0], 0]
+         ],
+        false,
+        [0, Math.PI / 2, 0],
+        calculate_position_along_part(body, 0.35)
+    ];
 
-let parts = [
-    // [seg shape, seg transform func, rotation, translation]
-    tail,
-    body,
-    leg1,
-    leg2,
-    leg3,
-    leg4,
-    wing1,
-    wing2,
-];
+    let leg2 = [
+        [
+            [  0.3 ,   0.2 ],
+            [  0.4 ,  -0.2 ],
+            [  0.2 ,  -0.3 ],
+            [    0 , -0.4],
+            [ -0.2 ,  -0.3 ],
+            [ -0.4 ,  -0.2 ],
+            [ -0.3 ,   0.2 ],
+        ],
+        [
+                [0.4, [0,0,0], 1.4],
+                [0.7, [0,0,0], 1.1],
+                [0.7, [0,0,0], 1.1],
+                [0.5, [1,0.6,0], 1],
+                [0.5, [0.3,0.3,0], 0.7],
+                [0.5, [0,0,0], 1],
+                [0.5, [0,0,-0.2], 0.8],
+                [0.5, [0,0,-0.3], 1.2],
+                [0.5, [0,0,-0.1], 1],
+                [0.2, [0,0,0.2], 1.5],
+                [0.05, [0,0,0], 1],
+                [0.2, [0,0,0], 0.7],
+                [0.0, [0,0,0], 0]
+         ],
+        false,
+        [0, Math.PI / 2, 0],
+        calculate_position_along_part(body, 0.6)
+    ];
+
+
+    let leg3 = leg1.map(a => a); //cheap copy of some sub arrays
+    let leg4 = leg2.map(a => a); //cheap copy of some sub arrays
+
+    leg3[2] = true;
+    leg4[2] = true;
+    leg3[3] = [0, -Math.PI / 2, 0];
+    leg4[3] = [0, -Math.PI / 2, 0];
+
+    let wing1 = [
+        [
+            [ -0.2,  0],
+            [   0, -0.2],
+            [  0.2,  0],
+            [   0,  0.2]
+        ],
+        function () {
+            let wing_length = 12;
+            let angles = [-0.06, -0.25, -0.1, -0.05, -0.05];
+            let steps = 30;
+            let a = [];
+            for (let i = 0; i < steps; i++){
+                a.push(
+                [
+                    wing_length / steps,
+                    [angles[parseInt(i/steps * angles.length)], 0, 0],
+                    0.97
+                ]);
+            }
+            return a;
+        },
+        false,
+        [-0.4, 0, -1],
+        misc.add_vec(calculate_position_along_part(body, 0.7), [1, 0, -0.3])
+    ];
+
+    let wing2 = wing1.map(v=>v);
+    wing2[3] = [-0.4, 0, 1];
+    wing2[4] = misc.add_vec(calculate_position_along_part(body, 0.7), [-1, 0, -0.3])
+
+    let tube_parts = [
+        // [seg shape, seg transform func, rotation, translation]
+        tail,
+        body,
+        leg1,
+        leg2,
+        leg3,
+        leg4,
+        wing1,
+        wing2,
+    ];
+    let points = [];
+    let normals = [];
+    // for each part we generate the tube then rotate and translate it
+    for (let part of tube_parts) {
+        let seg_shape = part[0];
+        let seg_transforms = typeof(part[1]) == 'function' ? part[1](time_ms / 500) : part[1];
+        let mirror = part[2];
+        let rotations = part[3];
+        let translation = part[4];
+        let m_rot = multiply_many([
+            m4.rotation_y(rotations[1]),
+            m4.rotation_x(rotations[0]),
+            m4.rotation_z(rotations[2]),
+            [[mirror ? -1 : 1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        ]);
+        let m_all = m4.multiply(m4.translation(...translation), m_rot);
+        let tube = generate_tube(seg_shape, seg_transforms);
+        let transformed_tube = transform_facets(tube, m_all, m_rot);
+        points.push(...transformed_tube['points']);
+        normals.push(...transformed_tube['normals']);
+    }
+    // generate wing fabrics
+    let to_4d = v => [...v, 1];
+    let num_attachments = 5;
+    //for (let i = 0; i < num_attachments - 1; i++){
+        points.push(to_4d(calculate_position_along_part(wing1, 0)));
+        points.push(to_4d(calculate_position_along_part(wing1, 0.5))); //i / num_attachments)));
+        points.push(to_4d(calculate_position_along_part(wing1, 1))); // (i + 1) / num_attachments)));
+        normals.push([0, 1, 0, 1]);
+        normals.push([0, 1, 0, 1]);
+        normals.push([0, 1, 0, 1]);
+    //}
+
+    return {
+        'points': points,
+        'normals': normals
+    };
+}
+
+
 
 
 
