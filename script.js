@@ -239,30 +239,39 @@ function form_dragon() {
             [ -0.2 ,  -0.5 ],
             [ -0.6 ,  -0.2 ],
             [ -0.3 ,   0.3 ],
-         ],
-         function(t) {
-             let tail_length = 6;
-             let num_segs = 10;
-             let segs = [];
-             for (let i = 0; i < num_segs; i++) {
-                 let x  = i / num_segs;
-                 segs.push([
-                     tail_length / num_segs,
-                     // ASJUST THESE PARAMETERS for different tail-wagging
-                     [
-                         Math.sin(t + 6 * x) / 20,
-                         Math.sin(2 * t + x) / 35,
-                         0
-                     ],
-                     0.92
-                 ]);
-             }
-             segs.push([0.4, [0, 0, 0], 0]);
-             return segs;
-         },
-         false,
-         [0, Math.PI, 0],
-         [0, 0, 0.4]
+        ],
+        function(t) {
+            let tail_length = 6;
+            let num_segs = 10;
+            let segs = [];
+            for (let i = 0; i < num_segs; i++) {
+                let x  = i / num_segs;
+                segs.push([
+                    tail_length / num_segs,
+                    // ASJUST THESE PARAMETERS for different tail-wagging
+                    // work by k * sin(a t + b x) where k, a, b constants
+                    [
+                        inpt('ver. wag amp', 0.1, 0, 1) *
+                        Math.sin(
+                            inpt('ver. t oscil', 1, 0, 5) * t +
+                            inpt('ver. x oscill', 6, 0, 10) * x
+                        ),
+                        inpt('hor. wag amp', 0.1, 0, 1) *
+                        Math.sin(
+                            inpt('hor. t oscil', 1, 0, 5) * t +
+                            inpt('hor. x oscill', 6, 0, 10) * x
+                        ),
+                        0
+                    ],
+                    0.92
+                ]);
+            }
+            segs.push([0.4, [0, 0, 0], 0]);
+            return segs;
+        },
+        false,
+        [0, Math.PI, 0],
+        [0, 0, 0.4]
     ];
 
     let body = [
@@ -320,7 +329,7 @@ function form_dragon() {
          ],
         false,
         [0, Math.PI / 2, 0],
-        calculate_position_along_part(body, 0.35)
+        calculate_position_along_part(body, 0.2)
     ];
 
     let leg2 = [
@@ -350,7 +359,7 @@ function form_dragon() {
          ],
         false,
         [0, Math.PI / 2, 0],
-        calculate_position_along_part(body, 0.6)
+        calculate_position_along_part(body, 0.5)
     ];
 
 
@@ -362,6 +371,11 @@ function form_dragon() {
     leg3[3] = [0, -Math.PI / 2, 0];
     leg4[3] = [0, -Math.PI / 2, 0];
 
+    let wing_rots = [
+        inpt('wing rot. x', -0.4, -4, 4),
+        inpt('wing rot. y', 0, -4, 4),
+        inpt('wing rot. z', -1, -4, 4),
+    ];
     let wing1 = [
         [
             [ -0.2,  0],
@@ -370,8 +384,8 @@ function form_dragon() {
             [   0,  0.2]
         ],
         function () {
-            let wing_length = 12;
-            let angles = [-0.06, -0.25, -0.1, -0.05, -0.05];
+            let wing_length = inpt('wing len.', 10, 4, 50);
+            let angles = [-0.06, -0.35, -0.1, -0.05, -0.05];
             let steps = 30;
             let a = [];
             for (let i = 0; i < steps; i++){
@@ -387,13 +401,13 @@ function form_dragon() {
             return a;
         },
         false,
-        [-0.4, 0, -1],
-        misc.add_vec(calculate_position_along_part(body, 0.7), [1, 0, -0.3])
+        wing_rots,
+        misc.add_vec(calculate_position_along_part(body, 0.6), [1, 0, -0.3])
     ];
 
     let wing2 = wing1.map(v=>v);
-    wing2[3] = [-0.4, 0, 1];
-    wing2[4] = misc.add_vec(calculate_position_along_part(body, 0.7), [-1, 0, -0.3])
+    wing2[3] = [wing_rots[0], wing_rots[1], -wing_rots[2]];
+    wing2[4] = misc.add_vec(calculate_position_along_part(body, 0.6), [-1, 0, -0.3]);
 
     let head = [
         [
@@ -457,7 +471,7 @@ function form_dragon() {
     }
     // generate wing fabric using a triangle fan arrangement
     let to_4d = v => [...v, 1];
-    let num_attachments = 12;
+    let num_attachments = 40;
     for (let i = 0; i < num_attachments; i++){
         points.push(to_4d(calculate_position_along_part(wing1, 0)));
         points.push(to_4d(calculate_position_along_part(wing1, i / num_attachments)));
@@ -481,55 +495,26 @@ function form_dragon() {
     };
 }
 
+var existing_sliders = {};
 
-
-
-
-//     function (t){
-//         let prelim = [
-//            [0.5, [0,0,0], 1.4],
-//            [0.5, [0.4,0,0], 1],
-//            [0.5, [0.4,0,0], 1],
-//            [0.5, [0.3,-0.4,0], 0.7],
-//            [0.5, [0,-0.3,0], 0.8],
-//            [0.5, [0,0,0], 1.2],
-//            [0.5, [0,0,0], 1],
-//         ]
-//         if (body_sliders['rots'].length) {
-//             for (let i = 0; i < prelim.length; i++){
-//                 prelim[i][1].splice(0, 1);
-//                 prelim[i][1].unshift(body_sliders['rots'][i]());
-//                 prelim[i].pop();
-//                 prelim[i].push(body_sliders['scales'][i]());
-//             }
-//         } else {
-//             for (let i = 0; i < prelim.length; i++){
-//                console.log(prelim[i][1][0]);
-//                 body_sliders['rots'].push(
-//                     new_slider(prelim[i][1][0], -1, 1)
-//                 );
-//                }
-//             document.getElementById('sliders').appendChild(document.createElement('br'));
-//             for (let i = 0; i < prelim.length; i++)
-//                 body_sliders['scales'].push(
-//                     new_slider(prelim[i][2], 0, 3)
-//                 );
-//         }
-//         return prelim;
-//     },
-
-
-
-
-var body_sliders = {'rots': [], 'scales': []};
-
-function new_slider(init, min, max) {
+function inpt(id, init, min, max) {
+    if (existing_sliders.hasOwnProperty(id))
+        return existing_sliders[id]();
+    let div = document.createElement('div');
+    let name = document.createElement('span');
+    let val = document.createElement('span');
+    name.innerText = id;
     let el = document.createElement('input');
     el.type = 'range';
     el.step = 0.01; el.min = min; el.max = max;
     el.value = init;
-    document.getElementById('sliders').appendChild(el);
-    return () => el.value;
+    div.appendChild(name);
+    div.appendChild(el);
+    div.appendChild(val);
+    (el.oninput = () => val.innerText = parseFloat(el.value).toFixed(2))();
+    document.getElementById('sliders').appendChild(div);
+    existing_sliders[id] = () => parseFloat(el.value);
+    return init;
 }
 
 

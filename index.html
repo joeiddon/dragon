@@ -5,11 +5,25 @@ html,body{
     padding: 0;
     margin: 0;
 }
+#sliders {
+    position: absolute;
+    right: 0;
+    text-align: right;
+    background-color: #fff;
+    padding: 0.4em;
+    font-family: monospace;
+}
+#sliders > div > span {
+    padding: 0.2em;
+}
+#sliders > div > input[type='range'] {
+    width: 20em;
+}
 </style>
 </head>
 
 <body>
-<div id='sliders' style='position: absolute; right: 0;'></div>
+<div id='sliders'></div>
 <canvas id='canvas'></canvas>
 <script src='helpers.js'></script>
 <script src='shaders.js'></script>
