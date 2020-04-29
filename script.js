@@ -34,11 +34,14 @@ gl.clearColor(0.8, 0.8, 0.8, 1);
 let a_position_loc = gl.getAttribLocation(program, 'a_position');
 let a_normal_loc = gl.getAttribLocation(program, 'a_normal');
 let u_world_matrix_loc = gl.getUniformLocation(program, 'u_world_matrix');
+let u_rot_matrix_loc = gl.getUniformLocation(program, 'u_rot_matrix');
 let u_view_matrix_loc = gl.getUniformLocation(program, 'u_view_matrix');
 let u_light_loc = gl.getUniformLocation(program, 'u_light');
+let a_texcoord_loc = gl.getAttribLocation(program, 'a_texcoord');
 
 gl.enableVertexAttribArray(a_position_loc);
 gl.enableVertexAttribArray(a_normal_loc);
+gl.enableVertexAttribArray(a_texcoord_loc);
 
 let positions_buffer = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, positions_buffer);
@@ -48,115 +51,144 @@ let normals_buffer = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, normals_buffer);
 gl.vertexAttribPointer(a_normal_loc, 3, gl.FLOAT, false, 0, 0);
 
-function multiply_many(matrices) {
-    // multiplies in left to right order, so that the first index is the
-    // furthest left / last matrix. This means accumulator goes on left so
-    // that first index ends up on the furthest left and identity ends up
-    // on furthest left hand side ! This is definitely right - have tested
-    return matrices.reduce((acc,cur) => m4.multiply(acc, cur), m4.identity());
+let texcoords_buffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, texcoords_buffer);
+gl.vertexAttribPointer(a_texcoord_loc, 2, gl.FLOAT, false, 0, 0);
+
+let texture = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, texture);
+// fill with a blue pixel whilst wait for texture atlas image to load
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+              new Uint8Array([0, 0, 255, 255]));
+let image = new Image();
+image.src = 'texture_atlas.jpg'
+image.onload = function() {
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+  gl.generateMipmap(gl.TEXTURE_2D);
+};
+
+let textures = {
+    // format of values: [min corner, max corner] - from top left of image
+    // that bottom left corner of texture is [0, 0]
+    'terrain': [[0.001, 0.001], [0.4999, 0.4999]],
+    //'scales': [[0, 0.375], [0.5, 0.5]]
+    //'terrain': [[0,0], [1, 1]],
+    'scales': [[0.001, 0.4999], [0.125, 0.625]]
 }
 
-function generate_tube(segment_shape, transforms){
-    /*
-     * Extrudes segment_shape according to transforms from origin into positive
-     * z-direction.
-     *
-     * the normals of the segment shape are assumed to be going straight out
-     * from the origin to each vertex
-     * arguments:
-     * segment_shape - an array of 2d XY points to describe shape of segment
-     * transforms - an array of [step, [rx, ry, rx], scale] transformations
-     */
-
-    let base_segment = {
-        'points': segment_shape.map(v => [v[0], v[1], 0, 1]),
-        'normals': segment_shape.map(v => [v[0], v[1], 0, 1])
-    }
-    let segments = [
-        base_segment
+function get_texcoord(texture, coord) {
+    let min_x = textures[texture][0][0];
+    let min_y = textures[texture][0][1];
+    let max_x = textures[texture][1][0];
+    let max_y = textures[texture][1][1];
+    // wrap around at positive end before mapping to atlas
+    if (coord[0] > 1) coord[0] %= 1;
+    if (coord[1] > 1) coord[1] %= 1;
+    return [
+        min_x + coord[0] * (max_x - min_x),
+        min_y + coord[1] * (max_y - min_y)
     ];
+}
 
-    let cur_pos = [0, 0, 0];
+function gh(x,y) {
+    // get height at x,y
+    return 2 * perlin.get(x,y) + perlin.get(4*x, 4*y) / 5;
+}
 
-    // the current seg rotation for normals and step
-    let m_rot = m4.identity();
-    // the current seg scale - will be comined with rotation to get new segment
-    let m_scale = m4.identity();
+function calculate_normal(x,y) {
+    /* un-normalised - shader can take care of that! */
+    let delta = 0.0001;
+    let h = gh(x,y);
+    let c =  misc.cross(
+        misc.sub_vec([x, gh(x,y+delta), y+delta], [x, h, y]),
+        misc.sub_vec([x+delta, gh(x+delta,y), y], [x, h, y]),
+    );
+    return [c[1], c[0], c[2]];
+}
 
-    for (let transform of transforms) {
-        let step = transform[0];
-        let rotations = transform[1];
-        let scale = transform[2];
+var chunk_memory = {}
 
-        // calculate new face orientation (rotations and scales)
-        // remember source code inreverse order to application
-        m_rot = multiply_many([
-            // order of z, x, y chosen specially - twist -> pitch -> yaw
-            m4.rotation_y(rotations[1]),
-            m4.rotation_x(rotations[0]),
-            m4.rotation_z(rotations[2]),
-            m_rot
-        ]);
-        m_scale = m4.multiply(m4.scale(scale), m_scale);
-        // update the current position by adding the rotated z-direction step
-        cur_pos = misc.add_vec(
-            cur_pos,
-            m4.apply(m_rot, [0, 0, step, 1]).slice(0,3)
-        );
-        // to transform base segment, rotate and scale then translate to cur pos
-        // remember that the source code is in reverse order to application
-        let m_seg = multiply_many([
-            m4.translation(...cur_pos),
-            m_scale,
-            m_rot,
-        ]);
-        segments.push({
-            'points': base_segment['points'].map(v => m4.apply(m_seg, v)),
-            'normals': base_segment['normals'].map(v => m4.apply(m_rot, v))
-        });
-    }
+function gen_terrain_chunk(chunk_x, chunk_y) {
+    /* generates a unit chunk translated to chunk_x, chunk_y*/
+    if (chunk_memory.hasOwnProperty([chunk_x, chunk_y]))
+        return chunk_memory[[chunk_x, chunk_y]];
+    let points = [];
+    let normals = [];
+    let texpoints = [];
 
-    function hull_segs(a, b) {
-        /* takes two segments and returns facets (triangles and
-         * normals) note that the points and normals are 4d
-         */
-        let points = [];
-        let normals = [];
-        if (a['points'].length != a['normals'].length ||
-              b['points'].length != b['normals'].length ||
-              a['normals'].length != b['normals'].length)
-            console.error('segments not same size!');
-        for (let i = 0; i < a['points'].length; i++){
-            let ni = i + 1 == a['points'].length ? 0 : i + 1;
-            // verts describes two triangles to connect this index around the
-            // segment to the next segment (i to ni)
-            let verts = [
-                [a, i], [a, ni], [b, i],
-                [b, i], [a, ni], [b, ni]
-            ];
-            for (let v of verts) {
-                points.push(v[0]['points'][v[1]]);
-                normals.push(v[0]['normals'][v[1]]);
-            }
+    let divs = 5;
+    // d is interval / step
+    let d = 1 / divs;
+    for (let xx = 0; xx < divs; xx++){
+        for (let yy = 0; yy < divs; yy++){
+            let x = xx / divs + chunk_x;
+            let y = yy / divs + chunk_y;
+            // remember y and z flipped in 3d
+            points.push([x, gh(x,y), y]);
+            points.push([x+d, gh(x+d,y), y]);
+            points.push([x+d, gh(x+d,y+d), y+d]);
+            points.push([x, gh(x,y), y]);
+            points.push([x, gh(x,y+d), y+d]);
+            points.push([x+d, gh(x+d,y+d), y+d]);
+            // use this code for per-triangle normals ...
+            //let n1 = misc.cross(
+            //    misc.sub_vec([x+d, gh(x+d,y+d), y+d], [x+d, gh(x+d,y), y]),
+            //    misc.sub_vec([x+d, gh(x+d,y+d), y+d], [x, gh(x,y), y]),
+            //);
+            //normals.push(n1);
+            //normals.push(n1);
+            //normals.push(n1);
+            //let n2 = misc.cross(
+            //    misc.sub_vec([x+d, gh(x+d,y+d), y+d], [x, gh(x,y), y]),
+            //    misc.sub_vec([x+d, gh(x+d,y+d), y+d], [x, gh(x,y+d), y+d]),
+            //);
+            //normals.push(n2);
+            //normals.push(n2);
+            //normals.push(n2);
+            // per vertex normals ...
+            normals.push(calculate_normal(x, y));
+            normals.push(calculate_normal(x+d, y));
+            normals.push(calculate_normal(x+d, y+d));
+            normals.push(calculate_normal(x, y));
+            normals.push(calculate_normal(x, y+d));
+            normals.push(calculate_normal(x+d, y+d));
+
+            // texture scale
+            let ts = 1;
+            texpoints.push(get_texcoord('terrain', [ts * (xx/divs), ts * (yy/divs)]));
+            texpoints.push(get_texcoord('terrain', [ts * (xx/divs+d), ts * (yy/divs)]));
+            texpoints.push(get_texcoord('terrain', [ts * (xx/divs+d), ts * (yy/divs+d)]));
+            texpoints.push(get_texcoord('terrain', [ts * (xx/divs), ts * (yy/divs)]));
+            texpoints.push(get_texcoord('terrain', [ts * (xx/divs), ts * (yy/divs+d)]));
+            texpoints.push(get_texcoord('terrain', [ts * (xx/divs+d), ts * (yy/divs+d)]));
+            //texpoints.push([0,0]);
+            //texpoints.push([0.5,0]);
+            //texpoints.push([0.5,0.5]);
+            //texpoints.push([0,0]);
+            //texpoints.push([0,0.5]);
+            //texpoints.push([0.5,0.5]);
         }
-        return {
-            'points': points,
-            'normals': normals
+    }
+    let chunk = {'points': points, 'normals': normals, 'texpoints': texpoints};
+    chunk_memory[[chunk_x, chunk_y]] = chunk;
+    return chunk;
+}
+
+function gen_terrain() {
+    let points = [];
+    let normals = [];
+    let texpoints = [];
+    // generate each chunk
+    for (let x = -4; x < 4; x ++){
+        for (let y = -4; y < 4; y ++){
+            let chunk = gen_terrain_chunk(x,y);
+            points.push(...chunk['points']);
+            normals.push(...chunk['normals']);
+            texpoints.push(...chunk['texpoints']);
         }
     }
-
-    let facets = {
-        'points': [],
-        'normals': []
-    }
-
-    for (let i = 0; i < segments.length - 1; i++){
-        let hulled = hull_segs(segments[i], segments[i+1]);
-        facets['points'].push(...hulled['points']);
-        facets['normals'].push(...hulled['normals']);
-    }
-
-    return facets
+    return {'points': points, 'normals': normals, 'texpoints': texpoints};
 }
 
 function flatten_4d(array) {
@@ -164,20 +196,32 @@ function flatten_4d(array) {
     return array.map(v => v.slice(0,3)).flat();
 }
 
-function transform_facets(facets, m_all, m_rot){
-    return {
-        'points': facets['points'].map(v => m4.apply(m_all, v)),
-        'normals': facets['normals'].map(v => m4.apply(m_rot, v))
-    }
-}
+let time_ms = 0;
+var dragon = form_dragon(0); // just forming dragon reduces fps by ~10
+let k = 0.1;
+let m_scale = [
+    [k, 0, 0, 0],
+    [0, k, 0, 0],
+    [0, 0, k, 0],
+    [0, 0, 0, 1]
+];
+//make dragon smaller
+dragon = transform_facets(dragon, m_scale, m4.identity());
 
 function populate_buffers() {
     let positions = [];
     let normals = [];
+    let texcoords = [];
 
-    let dragon = form_dragon();
+    //let terrain = gen_terrain();
+    //positions.push(...terrain['points'].flat());
+    //normals.push(...terrain['normals'].flat());
+    //texcoords.push(...terrain['texpoints'].flat());
+
+
     positions.push(...flatten_4d(dragon['points']));
     normals.push(...flatten_4d(dragon['normals']));
+    texcoords.push(...dragon['texpoints'].flat());
 
     gl.bindBuffer(gl.ARRAY_BUFFER, positions_buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
@@ -185,339 +229,13 @@ function populate_buffers() {
     gl.bindBuffer(gl.ARRAY_BUFFER, normals_buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
 
+    gl.bindBuffer(gl.ARRAY_BUFFER, texcoords_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texcoords), gl.STATIC_DRAW);
+
     //return number of triangles
     if (positions.length != normals.length) console.error('normals and positions different lengths');
     return positions.length / 3;
 }
-
-function calculate_position_along_part(part, x) {
-    /* x should be float from 0 to 1. Returns 3d position of that proportion
-     * along tube part.
-     */
-    let transformations = typeof(part[1]) == 'function' ? part[1](time_ms / 500) : part[1];
-    let mirror = part[2];
-    let rotations = part[3];
-    let translation = part[4];
-
-    let cur_pos = [0, 0, 0];
-
-    let m_rot = m4.identity();
-    for (let i = 0; i < parseInt(x * transformations.length); i++) {
-        let step = transformations[i][0];
-        let rots = transformations[i][1];
-        m_rot = multiply_many([
-            m4.rotation_y(rots[1]),
-            m4.rotation_x(rots[0]),
-            m4.rotation_z(rots[2]),
-            m_rot
-        ]);
-        cur_pos = misc.add_vec(
-            cur_pos,
-            m4.apply(m_rot, [0, 0, step, 1]).slice(0,3)
-        );
-    }
-
-    // after computing the position along the dragon then need to rotate that
-    // position and add the shape translation
-    //
-    let m_shape_rot = multiply_many([
-        m4.rotation_y(rotations[1]),
-        m4.rotation_x(rotations[0]),
-        m4.rotation_z(rotations[2]),
-        [[mirror ? -1 : 1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-    ]);
-    cur_pos = misc.add_vec(translation, m4.apply(m_shape_rot, [...cur_pos, 1]).slice(0,3));
-    return cur_pos;
-}
-
-function form_dragon() {
-    let tail = [
-        [
-            [  0.3 ,   0.3 ],
-            [  0.6 ,  -0.2 ],
-            [  0.2 ,  -0.5 ],
-            [ -0.2 ,  -0.5 ],
-            [ -0.6 ,  -0.2 ],
-            [ -0.3 ,   0.3 ],
-        ],
-        function(t) {
-            let tail_length = 6;
-            let num_segs = 10;
-            let segs = [];
-            for (let i = 0; i < num_segs; i++) {
-                let x  = i / num_segs;
-                segs.push([
-                    tail_length / num_segs,
-                    // ASJUST THESE PARAMETERS for different tail-wagging
-                    // work by k * sin(a t + b x) where k, a, b constants
-                    [
-                        inpt('ver. wag amp', 0.1, 0, 1) *
-                        Math.sin(
-                            inpt('ver. t oscil', 1, 0, 5) * t +
-                            inpt('ver. x oscill', 6, 0, 10) * x
-                        ),
-                        inpt('hor. wag amp', 0.1, 0, 1) *
-                        Math.sin(
-                            inpt('hor. t oscil', 1, 0, 5) * t +
-                            inpt('hor. x oscill', 6, 0, 10) * x
-                        ),
-                        0
-                    ],
-                    0.92
-                ]);
-            }
-            segs.push([0.4, [0, 0, 0], 0]);
-            return segs;
-        },
-        false,
-        [0, Math.PI, 0],
-        [0, 0, 0.4]
-    ];
-
-    let body = [
-         [
-            [  0.3 ,   0.2 ],
-            [  0.4 ,  -0.2 ],
-            [  0.2 ,  -0.3 ],
-            [    0 , -0.4],
-            [ -0.2 ,  -0.3 ],
-            [ -0.4 ,  -0.2 ],
-            [ -0.3 ,   0.2 ],
-
-         ],
-            [
-                [1, [0,0,0], 2.0],
-                [1, [0,0,0], 1.1],
-                [1, [0,0,0], 1.4],
-                [1, [-0.2,0,0], 1.3],
-                [1, [-0.4,0,0], 1.1],
-                [1, [-0.6,0,0], 0.9],
-                [1, [-0.1,0,0], 0.9],
-                [1, [-0.1,0,0], 0.8],
-                [1, [0.3,0,0], 0.7],
-                [1, [0, 0, 0], 0]
-             ],
-        false,
-         [0, 0, 0],
-         [0, 0, 0]
-    ];
-
-    let leg1 = [
-        [
-            [  0.3 ,   0.2 ],
-            [  0.4 ,  -0.2 ],
-            [  0.2 ,  -0.3 ],
-            [    0 , -0.4],
-            [ -0.2 ,  -0.3 ],
-            [ -0.4 ,  -0.2 ],
-            [ -0.3 ,   0.2 ],
-        ],
-        [
-                [0.3, [0,0,0], 1.4],
-                [0.5, [0,0,0], 1.1],
-                [0.5, [0,0,0], 1.1],
-                [0.5, [0.5,1.1,0], 1],
-                [0.5, [0.3,0.3,0], 0.7],
-                [0.5, [0,0,0], 1],
-                [0.5, [0,0,-0.4], 0.8],
-                [0.5, [0,0,-0.5], 1.2],
-                [0.5, [0,0,-0.2], 1],
-                [0.2, [0,0,0.2], 1.5],
-                [0.05, [0,0,0], 1],
-                [0.2, [0,0,0], 0.7],
-                [0.0, [0,0,0], 0]
-         ],
-        false,
-        [0, Math.PI / 2, 0],
-        calculate_position_along_part(body, 0.2)
-    ];
-
-    let leg2 = [
-        [
-            [  0.3 ,   0.2 ],
-            [  0.4 ,  -0.2 ],
-            [  0.2 ,  -0.3 ],
-            [    0 , -0.4],
-            [ -0.2 ,  -0.3 ],
-            [ -0.4 ,  -0.2 ],
-            [ -0.3 ,   0.2 ],
-        ],
-        [
-                [0.4, [0,0,0], 1.4],
-                [0.7, [0,0,0], 1.1],
-                [0.7, [0,0,0], 1.1],
-                [0.5, [1,0.6,0], 1],
-                [0.5, [0.3,0.3,0], 0.7],
-                [0.5, [0,0,0], 1],
-                [0.5, [0,0,-0.2], 0.8],
-                [0.5, [0,0,-0.3], 1.2],
-                [0.5, [0,0,-0.1], 1],
-                [0.2, [0,0,0.2], 1.5],
-                [0.05, [0,0,0], 1],
-                [0.2, [0,0,0], 0.7],
-                [0.0, [0,0,0], 0]
-         ],
-        false,
-        [0, Math.PI / 2, 0],
-        calculate_position_along_part(body, 0.5)
-    ];
-
-
-    let leg3 = leg1.map(a => a); //cheap copy of some sub arrays
-    let leg4 = leg2.map(a => a); //cheap copy of some sub arrays
-
-    leg3[2] = true;
-    leg4[2] = true;
-    leg3[3] = [0, -Math.PI / 2, 0];
-    leg4[3] = [0, -Math.PI / 2, 0];
-
-    let wing_rots = [
-        inpt('wing rot. x', -0.4, -4, 4),
-        inpt('wing rot. y', 0, -4, 4),
-        inpt('wing rot. z', -1, -4, 4),
-    ];
-    let wing1 = [
-        [
-            [ -0.2,  0],
-            [   0, -0.2],
-            [  0.2,  0],
-            [   0,  0.2]
-        ],
-        function () {
-            let wing_length = inpt('wing len.', 10, 4, 50);
-            let angles = [-0.06, -0.35, -0.1, -0.05, -0.05];
-            let steps = 30;
-            let a = [];
-            for (let i = 0; i < steps; i++){
-                a.push(
-                [
-                    wing_length / steps,
-                    [angles[parseInt(i/steps * angles.length)], 0, 0],
-                    0.97
-                ]);
-            }
-            // closing spike !
-            a.push([0.3, [0, 0, 0], 0]);
-            return a;
-        },
-        false,
-        wing_rots,
-        misc.add_vec(calculate_position_along_part(body, 0.6), [1, 0, -0.3])
-    ];
-
-    let wing2 = wing1.map(v=>v);
-    wing2[3] = [wing_rots[0], wing_rots[1], -wing_rots[2]];
-    wing2[4] = misc.add_vec(calculate_position_along_part(body, 0.6), [-1, 0, -0.3]);
-
-    let head = [
-        [
-            [ -0.3, -0.25],
-            [ -0.5, -0.1],
-            [ -0.5,  0.1],
-            [ -0.4,  0.2],
-            [  0.4,  0.2],
-            [  0.5,  0.1],
-            [  0.5, -0.1],
-            [  0.3, -0.25]
-        ],
-        [
-            [0.6, [0,0,0], 2],
-            [0.4, [0.6,0,0], 1.4],
-            [0.5, [0.4,0,0], 1],
-            [0.5, [0.3,0,0], 1],
-            [0.3, [0,0,0], 0.8],
-            [0.1, [0,0,0], 0.8],
-            [0.1, [0,0,0], 0.6],
-            [0.1, [0,0,0], 0.2],
-            [0, [0,0,0], 0]
-        ],
-        false,
-        [-1.1, 0, 0],
-        calculate_position_along_part(body, 0.96)
-    ];
-
-    let tube_parts = [
-        // [seg shape, seg transform func, rotation, translation]
-        tail,
-        body,
-        leg1,
-        leg2,
-        leg3,
-        leg4,
-        wing1,
-        wing2,
-        head
-    ];
-    let points = [];
-    let normals = [];
-    // for each part we generate the tube then rotate and translate it
-    for (let part of tube_parts) {
-        let seg_shape = part[0];
-        let seg_transforms = typeof(part[1]) == 'function' ? part[1](time_ms / 500) : part[1];
-        let mirror = part[2];
-        let rotations = part[3];
-        let translation = part[4];
-        let m_rot = multiply_many([
-            m4.rotation_y(rotations[1]),
-            m4.rotation_x(rotations[0]),
-            m4.rotation_z(rotations[2]),
-            [[mirror ? -1 : 1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        ]);
-        let m_all = m4.multiply(m4.translation(...translation), m_rot);
-        let tube = generate_tube(seg_shape, seg_transforms);
-        let transformed_tube = transform_facets(tube, m_all, m_rot);
-        points.push(...transformed_tube['points']);
-        normals.push(...transformed_tube['normals']);
-    }
-    // generate wing fabric using a triangle fan arrangement
-    let to_4d = v => [...v, 1];
-    let num_attachments = 40;
-    for (let i = 0; i < num_attachments; i++){
-        points.push(to_4d(calculate_position_along_part(wing1, 0)));
-        points.push(to_4d(calculate_position_along_part(wing1, i / num_attachments)));
-        points.push(to_4d(calculate_position_along_part(wing1, (i + 1) / num_attachments)));
-        normals.push([0, 1, 0, 1]);
-        normals.push([0, 1, 0, 1]);
-        normals.push([0, 1, 0, 1]);
-    }
-    for (let i = 0; i < num_attachments; i++){
-        points.push(to_4d(calculate_position_along_part(wing2, 0)));
-        points.push(to_4d(calculate_position_along_part(wing2, i / num_attachments)));
-        points.push(to_4d(calculate_position_along_part(wing2, (i + 1) / num_attachments)));
-        normals.push([0, 1, 0, 1]);
-        normals.push([0, 1, 0, 1]);
-        normals.push([0, 1, 0, 1]);
-    }
-
-    return {
-        'points': points,
-        'normals': normals
-    };
-}
-
-var existing_sliders = {};
-
-function inpt(id, init, min, max) {
-    if (existing_sliders.hasOwnProperty(id))
-        return existing_sliders[id]();
-    let div = document.createElement('div');
-    let name = document.createElement('span');
-    let val = document.createElement('span');
-    name.innerText = id;
-    let el = document.createElement('input');
-    el.type = 'range';
-    el.step = 0.01; el.min = min; el.max = max;
-    el.value = init;
-    div.appendChild(name);
-    div.appendChild(el);
-    div.appendChild(val);
-    (el.oninput = () => val.innerText = parseFloat(el.value).toFixed(2))();
-    document.getElementById('sliders').appendChild(div);
-    existing_sliders[id] = () => parseFloat(el.value);
-    return init;
-}
-
-
 
 //clockwise triangles are back-facing, counter-clockwise are front-facing
 //switch two verticies to easily flip direction a triangle is facing
@@ -536,8 +254,8 @@ function perspective_mat(fov, aspect, near, far){
     ];
 }
 
-let fov = misc.deg_to_rad(50);
-let near = 0.1; //closest z-coordinate to be rendered
+let fov = misc.deg_to_rad(70);
+let near = 0.001; //closest z-coordinate to be rendered
 let far = 100; //furthest z-coordianted to be rendered
 let m_perspective;
 
@@ -566,10 +284,11 @@ function set_u_matrix(){
     //maps 3d to 2d
     let m_world = m4.multiply(m_perspective, m_view);
     gl.uniformMatrix4fv(u_world_matrix_loc, false, m4.gl_format(m_world));
-    gl.uniformMatrix4fv(u_view_matrix_loc, false, m4.gl_format(m_rot));
+    gl.uniformMatrix4fv(u_rot_matrix_loc, false, m4.gl_format(m_rot));
+    gl.uniformMatrix4fv(u_view_matrix_loc, false, m4.gl_format(m_view));
 }
 
-let time_ms;
+//let time_ms; // declared earlier for a hack
 let last_time;
 let time_delta;
 
