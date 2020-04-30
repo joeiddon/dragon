@@ -356,7 +356,7 @@ function form_dragon(time_ms) {
     let wing_rots = [
         -0.15,
         0,
-        0.5 * Math.sin(1.5 * time_ms / 500) - 1,
+        0.5 * Math.sin(2 * time_ms / 500) - 1,
     ];
     let wing1 = [
         [

@@ -97,7 +97,7 @@ function get_texcoord(texture, coord) {
 
 function gh(x,y) {
     // get height at x,y
-    return 2 * perlin.get(x,y) + perlin.get(4*x, 4*y) / 5;
+    return 1.5 * perlin.get(x,y) + perlin.get(4*x, 4*y) / 5;
 }
 
 function calculate_normal(x,y) {
@@ -235,15 +235,18 @@ let space_pitch = 0;
 
 let cam = [0, 1.5, -5]; // issues when cam is up x-axis with panning of space_pitch !!
 
+let dragon_position = [0, 3, 0];
+let dragon_direction = {'yaw': 0, 'pitch': 0};
+
 let light = [-1, -1, 1]; // normalised in vertex shader
 
 function set_u_matrix(){
     // matrices in right-to-left order (i.e. in order of application)
 
     // rotates space according to space_yaw and space_pitch
-    let m_rot = m4.multiply(m4.rotation_x(space_pitch), m4.rotation_y(space_yaw));
+    let m_rot = m4.identity(); //multiply(m4.rotation_x(space_pitch), m4.rotation_y(space_yaw));
     // transforms in front of cam's view
-    let m_view = m4.multiply(m4.inverse(m4.orient(cam, [0,0,0])), m_rot);
+    let m_view = m4.multiply(m4.inverse(m4.orient(cam, dragon_position)), m_rot);
     //maps 3d to 2d
     let m_world = m4.multiply(m_perspective, m_view);
     gl.uniformMatrix4fv(u_world_matrix_loc, false, m4.gl_format(m_world));
@@ -260,10 +263,38 @@ let terrain_positions = new Float32Array(terrain['points'].flat());
 let terrain_normals = new Float32Array(terrain['normals'].flat());
 let terrain_texcoords = new Float32Array(terrain['texpoints'].flat());
 
+let dist = 0.2;
+let spd = 0.9; //block per sec
+
+let yaw_speed = 0;
+
 function update(time) {
     time_ms = time; // assign to global
-    //time_delta = last_time ? time_ms - last_time : 10000;
-    //last_time = time_ms;
+    if (!last_time){
+        last_time = time_ms;
+        requestAnimationFrame(update);
+        return;
+    }
+    time_delta = (time_ms - last_time) / 1000;
+    last_time = time_ms;
+
+    dragon_direction.yaw += yaw_speed * time_delta;
+
+    let dragon_direction_vect = [
+        Math.cos(dragon_direction.pitch) * Math.sin(dragon_direction.yaw),
+        Math.sin(dragon_direction.pitch),
+        Math.cos(dragon_direction.pitch) * Math.cos(dragon_direction.yaw)
+    ];
+
+    dragon_position = misc.add_vec(
+        dragon_position,
+        misc.scale_vec(dragon_direction_vect, spd * time_delta)
+    );
+
+    cam = misc.sub_vec(
+        dragon_position,
+        misc.scale_vec(dragon_direction_vect, dist)
+    );
 
     set_u_matrix();
     gl.uniform3fv(u_light_loc, new Float32Array(light));
@@ -289,8 +320,15 @@ function update(time) {
         [0, 0, k, 0],
         [0, 0, 0, 1]
     ];
+    let m_dragon = multiply_many([
+        m4.translation(...dragon_position),
+        m4.rotation_y(dragon_direction.yaw),
+        m4.rotation_x(-dragon_direction.pitch),
+        m4.rotation_z(-yaw_speed / 4),
+        m_scale
+    ]);
     //make dragon smaller
-    dragon = transform_facets(dragon, m_scale, m4.identity());
+    dragon = transform_facets(dragon, m_dragon, m4.identity());
 
     let positions = flatten_4d(dragon['points']);
     let normals = flatten_4d(dragon['normals']);
@@ -322,15 +360,17 @@ function toclipspace(x, y) {
 }
 
 canvas.addEventListener('mousemove', function(e) {
-    let sensitivity = 400;
+    let sensitivity = 150;
     // if right click held down, so panning
-    if (e.buttons & 1) {
-        space_yaw -= e.movementX / sensitivity;
-        space_pitch -= e.movementY / sensitivity;
-        if (space_pitch > Math.PI/2) space_pitch = Math.PI / 2;
-        if (space_pitch < -Math.PI/2) space_pitch = -Math.PI / 2;
-    }
+    //if (e.buttons & 1) {
+        yaw_speed = (e.x / canvas.width - 0.5) * 10;
+        if (yaw_speed > 5) yaw_speed = 5;
+        if (yaw_speed < -5) yaw_speed = -5;
+        dragon_direction.pitch = -(e.y / canvas.height - 0.5) * 3;
+        if (dragon_direction.pitch > Math.PI / 2) dragon_direction.pitch = Math.PI / 2;
+        if (dragon_direction.pitch < -Math.PI / 2) dragon_direction.pitch = -Math.PI / 2;
+    //}
 });
 
-canvas.addEventListener('wheel', e => {cam = misc.scale_vec(cam, 1 + e.deltaY / 200);});
+canvas.addEventListener('wheel', e => {dist *= 1 + e.deltaY / 200;});
 //canvas.addEventListener('click', e => {charges.push({position: [...mouse_charge.position], magnitude: mouse_charge.magnitude})}); // unpacked so creates new object
