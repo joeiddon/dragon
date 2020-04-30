@@ -26,7 +26,8 @@ function generate_tube(segment_shape, transforms){
 
     let base_segment = {
         'points': segment_shape.map(v => [v[0], v[1], 0, 1]),
-        'normals': segment_shape.map(v => [v[0], v[1], 0, 1])
+        'normals': segment_shape.map(v => [v[0], v[1], 0, 1]),
+        'position_on_tube': 0
     }
     let segments = [
         base_segment
@@ -39,10 +40,14 @@ function generate_tube(segment_shape, transforms){
     // the current seg scale - will be comined with rotation to get new segment
     let m_scale = m4.identity();
 
+    let total_tube_length = 0;
+
     for (let transform of transforms) {
         let step = transform[0];
         let rotations = transform[1];
         let scale = transform[2];
+
+        total_tube_length += step;
 
         // calculate new face orientation (rotations and scales)
         // remember source code inreverse order to application
@@ -68,13 +73,18 @@ function generate_tube(segment_shape, transforms){
         ]);
         segments.push({
             'points': base_segment['points'].map(v => m4.apply(m_seg, v)),
-            'normals': base_segment['normals'].map(v => m4.apply(m_rot, v))
+            'normals': base_segment['normals'].map(v => m4.apply(m_rot, v)),
+            'position_on_tube': total_tube_length
         });
     }
 
-    function hull_segs(a, b) {
+    function hull_segs(a, b, tube_percent, tube_interval_percent) {
         /* takes two segments and returns facets (triangles and
-         * normals) note that the points and normals are 4d
+         * normals) note that the points and normals are 4d.
+         *
+         * tube percent should be float in [0,1) for how far a is along the
+         * tube and seg_interval_percent is float in [0,1) of distance, as a
+         * percent along tube, between the segments a and b
          */
         let points = [];
         let normals = [];
@@ -83,20 +93,26 @@ function generate_tube(segment_shape, transforms){
               b['points'].length != b['normals'].length ||
               a['normals'].length != b['normals'].length)
             console.error('segments not same size!');
+        let circum_interval_percent = 1 / a['points'].length;
         for (let i = 0; i < a['points'].length; i++){
+            let circum_percent = i / a['points'].length;
             let ni = i + 1 == a['points'].length ? 0 : i + 1;
             // verts describes two triangles to connect this index around the
             // segment to the next segment (i to ni), the third element is the
             // texcoord to used (in the scales texture coordinate space of
             // course)
             let verts = [
-                [a, i, [0,0]], [a, ni, [1,0]], [b, i, [1,1]],
-                [b, i, [0,0]], [a, ni, [0,1]], [b, ni, [1,1]]
+                [a, i, [0,0]], [a, ni, [1,0]], [b, i, [0,1]],
+                [b, i, [0,1]], [a, ni, [1,0]], [b, ni, [1,1]]
             ];
             for (let v of verts) {
                 points.push(v[0]['points'][v[1]]);
                 normals.push(v[0]['normals'][v[1]]);
-                texpoints.push(get_texcoord('scales', v[2].map(v=>v/2)));
+                let ts = 1;
+                texpoints.push(get_texcoord('raspberry_scales', [
+                    (circum_percent + circum_interval_percent * v[2][0]) * ts,
+                    (1 - (tube_percent + v[2][1] * tube_interval_percent)) * ts,
+                ]));
             }
         }
         return {
@@ -113,7 +129,11 @@ function generate_tube(segment_shape, transforms){
     }
 
     for (let i = 0; i < segments.length - 1; i++){
-        let hulled = hull_segs(segments[i], segments[i+1]);
+        let hulled = hull_segs(
+            segments[i], segments[i+1],
+            segments[i]['position_on_tube'] / total_tube_length,
+            (segments[i+1]['position_on_tube'] - segments[i]['position_on_tube'])/ total_tube_length
+        );
         facets['points'].push(...hulled['points']);
         facets['normals'].push(...hulled['normals']);
         facets['texpoints'].push(...hulled['texpoints']);
@@ -399,6 +419,26 @@ function form_dragon(time_ms) {
         calculate_position_along_part(body, 0.96)
     ];
 
+    let test_part = [
+        [
+            [-1, -1],
+            [-1,  1],
+            [ 1,  1],
+            [ 1, -1]
+        ],
+        [
+            [1, [0, 0, 0], 1],
+            [1, [0, 0, 0], 1],
+            [1, [0, 0, 0], 1],
+            [1, [0, 0, 0], 1],
+            [1, [0, 0, 0], 1],
+            [1, [0, 0, 0], 1],
+        ],
+        false,
+        [0,0,0],
+        [0,0,0],
+    ];
+
     let tube_parts = [
         // [seg shape, seg transform func, rotation, translation]
         tail,
@@ -410,6 +450,8 @@ function form_dragon(time_ms) {
         wing1,
         wing2,
         head
+
+        //test_part
     ];
     let points = [];
     let normals = [];

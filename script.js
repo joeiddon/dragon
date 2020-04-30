@@ -61,7 +61,7 @@ gl.bindTexture(gl.TEXTURE_2D, texture);
 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
               new Uint8Array([0, 0, 255, 255]));
 let image = new Image();
-image.src = 'texture_atlas.jpg'
+image.src = 'texture_atlas.png'
 image.onload = function() {
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
@@ -71,10 +71,14 @@ image.onload = function() {
 let textures = {
     // format of values: [min corner, max corner] - from top left of image
     // that bottom left corner of texture is [0, 0]
+    // weird black lines using texture atlas at boundaries - so this hack trims
+    // edges a little - maybe to do with anti-alisaing ?
     'terrain': [[0.001, 0.001], [0.4999, 0.4999]],
     //'scales': [[0, 0.375], [0.5, 0.5]]
     //'terrain': [[0,0], [1, 1]],
-    'scales': [[0.001, 0.4999], [0.125, 0.625]]
+    'scales': [[0.001, 0.4999], [0.125, 0.625]],
+    'gradient': [[0.4999, 0.001], [0.7499, 0.2499]],
+    'raspberry_scales': [[0.5001, 0.5001], [0.999, 0.999]]
 }
 
 function get_texcoord(texture, coord) {
@@ -196,47 +200,6 @@ function flatten_4d(array) {
     return array.map(v => v.slice(0,3)).flat();
 }
 
-let time_ms = 0;
-var dragon = form_dragon(0); // just forming dragon reduces fps by ~10
-let k = 0.1;
-let m_scale = [
-    [k, 0, 0, 0],
-    [0, k, 0, 0],
-    [0, 0, k, 0],
-    [0, 0, 0, 1]
-];
-//make dragon smaller
-dragon = transform_facets(dragon, m_scale, m4.identity());
-
-function populate_buffers() {
-    let positions = [];
-    let normals = [];
-    let texcoords = [];
-
-    //let terrain = gen_terrain();
-    //positions.push(...terrain['points'].flat());
-    //normals.push(...terrain['normals'].flat());
-    //texcoords.push(...terrain['texpoints'].flat());
-
-
-    positions.push(...flatten_4d(dragon['points']));
-    normals.push(...flatten_4d(dragon['normals']));
-    texcoords.push(...dragon['texpoints'].flat());
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, positions_buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, normals_buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, texcoords_buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texcoords), gl.STATIC_DRAW);
-
-    //return number of triangles
-    if (positions.length != normals.length) console.error('normals and positions different lengths');
-    return positions.length / 3;
-}
-
 //clockwise triangles are back-facing, counter-clockwise are front-facing
 //switch two verticies to easily flip direction a triangle is facing
 //"cull face" feature means kill (don't render) back-facing triangles
@@ -288,21 +251,64 @@ function set_u_matrix(){
     gl.uniformMatrix4fv(u_view_matrix_loc, false, m4.gl_format(m_view));
 }
 
-//let time_ms; // declared earlier for a hack
+let time_ms; // declared earlier for a hack
 let last_time;
 let time_delta;
+
+let terrain = gen_terrain();
+let terrain_positions = new Float32Array(terrain['points'].flat());
+let terrain_normals = new Float32Array(terrain['normals'].flat());
+let terrain_texcoords = new Float32Array(terrain['texpoints'].flat());
 
 function update(time) {
     time_ms = time; // assign to global
     //time_delta = last_time ? time_ms - last_time : 10000;
     //last_time = time_ms;
 
-    let num_triangles = populate_buffers();
-
     set_u_matrix();
     gl.uniform3fv(u_light_loc, new Float32Array(light));
+
     gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.drawArrays(gl.TRIANGLES, 0, num_triangles);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, positions_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, terrain_positions, gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, normals_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, terrain_normals, gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, texcoords_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, terrain_texcoords, gl.STATIC_DRAW);
+
+    gl.drawArrays(gl.TRIANGLES, 0, terrain['points'].length);
+
+    var dragon = form_dragon(time_ms); // just forming dragon reduces fps by ~10
+    let k = 0.01;
+    let m_scale = [
+        [k, 0, 0, 0],
+        [0, k, 0, 0],
+        [0, 0, k, 0],
+        [0, 0, 0, 1]
+    ];
+    //make dragon smaller
+    dragon = transform_facets(dragon, m_scale, m4.identity());
+
+    let positions = flatten_4d(dragon['points']);
+    let normals = flatten_4d(dragon['normals']);
+    let texcoords = dragon['texpoints'].flat();
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, positions_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, normals_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, texcoords_buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texcoords), gl.STATIC_DRAW);
+
+    //return number of triangles
+    if (positions.length != normals.length) console.error('normals and positions different lengths');
+
+    gl.drawArrays(gl.TRIANGLES, 0, dragon['points'].length);
     requestAnimationFrame(update);
 }
 

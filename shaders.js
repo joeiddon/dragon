@@ -32,6 +32,7 @@ void main(){
         normalize((u_rot_matrix * vec4(a_normal, 1)).xyz)
     );
     if (intensity < 0.0) intensity = 0.0;
+    //intensity = 1.0; // DISABLES SHADING !!
     texcoord = a_texcoord;
 
     // distance of vertex from camera
