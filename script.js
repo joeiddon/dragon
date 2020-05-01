@@ -325,20 +325,17 @@ function update(time) {
         [0, 0, k, 0],
         [0, 0, 0, 1]
     ];
-    let m_dragon_tilt = multiply_many([
-        m4.rotation_x(-dragon_direction.pitch),
-        m4.rotation_z(-yaw_speed / 4)
-    ]);
     let m_dragon_rot = multiply_many([
         m4.rotation_y(dragon_direction.yaw),
-        m_dragon_tilt
+        m4.rotation_x(-dragon_direction.pitch),
+        m4.rotation_z(-yaw_speed / 4)
     ]);
     let m_dragon_all = multiply_many([
         m4.translation(...dragon_position),
         m_dragon_rot,
         m_scale
     ]);
-    let dragon = form_dragon(time_ms, m_dragon_tilt); // just forming dragon reduces fps by ~10w
+    let dragon = form_dragon(time_ms); // just forming dragon reduces fps by ~10w
     //make dragon smaller
     dragon = transform_facets(dragon, m_dragon_all, m_dragon_rot);
 
