@@ -258,15 +258,18 @@ let time_ms; // declared earlier for a hack
 let last_time;
 let time_delta;
 
+let dist = 0.1;
+let spd = 0.5; //block per sec
+let min_fly_height = 0.05;
+
+let yaw_speed = 0;
+
+var flap_freq;
+
 let terrain = gen_terrain();
 let terrain_positions = new Float32Array(terrain['points'].flat());
 let terrain_normals = new Float32Array(terrain['normals'].flat());
 let terrain_texcoords = new Float32Array(terrain['texpoints'].flat());
-
-let dist = 0.2;
-let spd = 0.4; //block per sec
-
-let yaw_speed = 0;
 
 function update(time) {
     time_ms = time; // assign to global
@@ -287,12 +290,23 @@ function update(time) {
         Math.cos(dragon_direction.pitch) * Math.cos(dragon_direction.yaw)
     ];
 
+
+    let this_spd = spd;
+    if (dragon_direction_vect[1] < -0.2) {
+        flap_freq = 0;
+        this_spd = spd * 1.2;
+    } else if (dragon_direction_vect[1] > 0.4) {
+        this_spd = spd * 0.8;
+        flap_freq = 4;
+    } else {
+        flap_freq = 2;
+    }
+
     dragon_position = misc.add_vec(
         dragon_position,
-        misc.scale_vec(dragon_direction_vect, spd * time_delta)
+        misc.scale_vec(dragon_direction_vect, this_spd * time_delta)
     );
 
-    let min_fly_height = 0.2;
     if (gh(dragon_position[0], dragon_position[2]) > dragon_position[1] - min_fly_height)
         dragon_position[1] = gh(dragon_position[0], dragon_position[2]) + min_fly_height;
 
@@ -318,7 +332,7 @@ function update(time) {
 
     gl.drawArrays(gl.TRIANGLES, 0, terrain['points'].length);
 
-    let k = 0.01;
+    let k = 0.007;
     let m_scale = [
         [k, 0, 0, 0],
         [0, k, 0, 0],
