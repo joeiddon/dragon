@@ -264,7 +264,7 @@ let terrain_normals = new Float32Array(terrain['normals'].flat());
 let terrain_texcoords = new Float32Array(terrain['texpoints'].flat());
 
 let dist = 0.2;
-let spd = 0.9; //block per sec
+let spd = 0.4; //block per sec
 
 let yaw_speed = 0;
 
@@ -277,6 +277,7 @@ function update(time) {
     }
     time_delta = (time_ms - last_time) / 1000;
     last_time = time_ms;
+
 
     dragon_direction.yaw += yaw_speed * time_delta;
 
@@ -291,9 +292,14 @@ function update(time) {
         misc.scale_vec(dragon_direction_vect, spd * time_delta)
     );
 
+    let min_fly_height = 0.2;
+    if (gh(dragon_position[0], dragon_position[2]) > dragon_position[1] - min_fly_height)
+        dragon_position[1] = gh(dragon_position[0], dragon_position[2]) + min_fly_height;
+
     cam = misc.sub_vec(
         dragon_position,
         misc.scale_vec(dragon_direction_vect, dist)
+        //[0, 0, 0.5]
     );
 
     set_u_matrix();
@@ -312,7 +318,6 @@ function update(time) {
 
     gl.drawArrays(gl.TRIANGLES, 0, terrain['points'].length);
 
-    var dragon = form_dragon(time_ms); // just forming dragon reduces fps by ~10
     let k = 0.01;
     let m_scale = [
         [k, 0, 0, 0],
@@ -320,15 +325,22 @@ function update(time) {
         [0, 0, k, 0],
         [0, 0, 0, 1]
     ];
-    let m_dragon = multiply_many([
-        m4.translation(...dragon_position),
-        m4.rotation_y(dragon_direction.yaw),
+    let m_dragon_tilt = multiply_many([
         m4.rotation_x(-dragon_direction.pitch),
-        m4.rotation_z(-yaw_speed / 4),
+        m4.rotation_z(-yaw_speed / 4)
+    ]);
+    let m_dragon_rot = multiply_many([
+        m4.rotation_y(dragon_direction.yaw),
+        m_dragon_tilt
+    ]);
+    let m_dragon_all = multiply_many([
+        m4.translation(...dragon_position),
+        m_dragon_rot,
         m_scale
     ]);
+    let dragon = form_dragon(time_ms, m_dragon_tilt); // just forming dragon reduces fps by ~10w
     //make dragon smaller
-    dragon = transform_facets(dragon, m_dragon, m4.identity());
+    dragon = transform_facets(dragon, m_dragon_all, m_dragon_rot);
 
     let positions = flatten_4d(dragon['points']);
     let normals = flatten_4d(dragon['normals']);

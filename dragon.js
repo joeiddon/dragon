@@ -12,7 +12,7 @@ function multiply_many(matrices) {
     return matrices.reduce((acc,cur) => m4.multiply(acc, cur), m4.identity());
 }
 
-function generate_tube(segment_shape, transforms){
+function generate_tube(segment_shape, transforms, straight_down_matrix){
     /*
      * Extrudes segment_shape according to transforms from origin into positive
      * z-direction.
@@ -51,13 +51,17 @@ function generate_tube(segment_shape, transforms){
 
         // calculate new face orientation (rotations and scales)
         // remember source code inreverse order to application
-        m_rot = multiply_many([
-            // order of z, x, y chosen specially - twist -> pitch -> yaw
-            m4.rotation_y(rotations[1]),
-            m4.rotation_x(rotations[0]),
-            m4.rotation_z(rotations[2]),
-            m_rot
-        ]);
+        if (rotations) {
+            m_rot = multiply_many([
+                // order of z, x, y chosen specially - twist -> pitch -> yaw
+                m4.rotation_y(rotations[1]),
+                m4.rotation_x(rotations[0]),
+                m4.rotation_z(rotations[2]),
+                m_rot
+            ]);
+        } else {
+            m_rot = straight_down_matrix;
+        }
         m_scale = m4.multiply(m4.scale(scale), m_scale);
         // update the current position by adding the rotated z-direction step
         cur_pos = misc.add_vec(
@@ -214,7 +218,11 @@ function calculate_position_along_part(part, x) {
     return cur_pos;
 }
 
-function form_dragon(time_ms) {
+function form_dragon(time_ms, tilt_matrix) {
+    // do rotation down first as need to have inverse tilt ready to cancel with
+    // actual tilt i.e. T * T^-1 * R rather than T * R * T^-1
+    let down_matrix = m4.multiply(m4.inverse(tilt_matrix), m4.rotation_x(Math.PI/2));
+
     let tail = [
         [
             [  0.3 ,   0.3 ],
@@ -227,7 +235,7 @@ function form_dragon(time_ms) {
         function(t) {
             let tail_length = 6;
             let num_segs = 10;
-            let segs = [];
+            let segs = [[1, false, 1]]; // ITS NOT WORKING BECAUSE THE TAIL IS BEING ROTATED 180deg
             for (let i = 0; i < num_segs; i++) {
                 let x  = i / num_segs;
                 segs.push([
@@ -279,7 +287,7 @@ function form_dragon(time_ms) {
                 [1, [0.3,0,0], 0.4],
                 [1, [0, 0, 0], 0]
              ],
-        false,
+         false,
          [0, 0, 0],
          [0, 0, 0]
     ];
@@ -430,7 +438,7 @@ function form_dragon(time_ms) {
             [1, [0, 0, 0], 1],
             [1, [0, 0, 0], 1],
             [1, [0, 0, 0], 1],
-            [1, [0, 0, 0], 1],
+            [1, false, 1],
             [1, [0, 0, 0], 1],
             [1, [0, 0, 0], 1],
         ],
@@ -470,7 +478,7 @@ function form_dragon(time_ms) {
             [[mirror ? -1 : 1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         ]);
         let m_all = m4.multiply(m4.translation(...translation), m_rot);
-        let tube = generate_tube(seg_shape, seg_transforms);
+        let tube = generate_tube(seg_shape, seg_transforms, m4.multiply(m4.inverse(m_rot), down_matrix));
         let transformed_tube = transform_facets(tube, m_all, m_rot);
         points.push(...transformed_tube['points']);
         normals.push(...transformed_tube['normals']);
