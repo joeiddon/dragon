@@ -273,6 +273,8 @@ function set_flap_freq(new_flap_freq) {
     flap_freq = new_flap_freq;
 }
 
+let fpv = true;
+
 let terrain = gen_terrain();
 let terrain_positions = new Float32Array(terrain['points'].flat());
 let terrain_normals = new Float32Array(terrain['normals'].flat());
@@ -299,15 +301,13 @@ function update(time) {
 
     let this_spd = spd;
     if (dragon_direction_vect[1] < -0.4) {
-        this_spd = spd * (1 + -dragon_direction_vect[1]);
-        set_flap_freq(1);
-    } else if (dragon_direction_vect[1] > 0.4) {
-        this_spd = spd * 0.8;
-        set_flap_freq(4);
-    } else {
-        set_flap_freq(2);
-    }
-    //flap_freq = dragon_direction_vect[1] + 2; // - how not make this jumpy ??
+        this_spd = spd * 1.1 * (1 - dragon_direction_vect[1]);
+        //set_flap_freq(0.5);
+    }// else if (dragon_direction_vect[1] > 0.4) {
+    //    this_spd = spd;
+    //    //set_flap_freq(6);
+    //}
+    set_flap_freq(5 * (dragon_direction_vect[1] + 1)**2); // - how not make this jumpy ??
 
     dragon_position = misc.add_vec(
         dragon_position,
@@ -319,8 +319,8 @@ function update(time) {
 
     cam = misc.sub_vec(
         dragon_position,
-        //misc.scale_vec(dragon_direction_vect, dist)
-        [0, 0, 0.5]
+        fpv ? misc.scale_vec(dragon_direction_vect, dist) :
+        [0, -0.5, 0.5]
     );
 
     set_u_matrix();
@@ -403,4 +403,4 @@ canvas.addEventListener('mousemove', function(e) {
 });
 
 canvas.addEventListener('wheel', e => {dist *= 1 + e.deltaY / 200;});
-//canvas.addEventListener('click', e => {charges.push({position: [...mouse_charge.position], magnitude: mouse_charge.magnitude})}); // unpacked so creates new object
+canvas.addEventListener('click', e => {fpv = !fpv;});

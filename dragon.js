@@ -228,7 +228,7 @@ function form_dragon(time_ms) {
         function(t) {
             let tail_length = 6;
             let num_segs = 10;
-            let segs = [[1, [0, yaw_speed/8, 0], 1]];
+            let segs = [[1, [0, -yaw_speed/10, 0], 1]];
             for (let i = 0; i < num_segs; i++) {
                 let x  = i / num_segs;
                 segs.push([
