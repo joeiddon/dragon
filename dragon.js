@@ -228,7 +228,7 @@ function form_dragon(time_ms) {
         function(t) {
             let tail_length = 6;
             let num_segs = 10;
-            let segs = [];
+            let segs = [[1, [0, yaw_speed/8, 0], 1]];
             for (let i = 0; i < num_segs; i++) {
                 let x  = i / num_segs;
                 segs.push([
@@ -238,12 +238,12 @@ function form_dragon(time_ms) {
                     [
                         0.05 *
                         Math.sin(
-                            0.3 * t +
+                            0.5 * t +
                             6 * x
                         ) + 0.02,
                         0.1 *
                         Math.sin(
-                            0.6 * t +
+                            1 * t +
                             6 * x
                         ),
                         0
@@ -301,7 +301,7 @@ function form_dragon(time_ms) {
                 [0.5, [0,0,0], 1.1],
                 [0.5, [0.5,1.1,0], 1],
                 [0.5, [0.3,0.3,0], 0.6],
-                [0.5, [0,0,0], 1],
+                [0.5, [0,-yaw_speed/6,0], 1],
                 [0.5, [0,0,-0.4], 0.8],
                 [0.5, [0,0,-0.5], 1.2],
                 [0.2, [0,0,0.2], 1.5],
@@ -329,8 +329,8 @@ function form_dragon(time_ms) {
                 [0.4, [0,0,0], 1.1],
                 [0.7, [0,0,0], 1.1],
                 [0.5, [1,0.6,0], 1],
-                [0.5, [0.3,0.3,0], 0.6],
-                [0.5, [0,0,0], 1],
+                [0.5, [0.4,0.4,0], 0.6],
+                [0.5, [0,-yaw_speed/6,0], 1],
                 [0.5, [0,0,-0.2], 0.8],
                 [0.5, [0,0,-0.3], 1.2],
                 [0.2, [0,0,0.2], 1.5],
@@ -343,10 +343,15 @@ function form_dragon(time_ms) {
         calculate_position_along_part(body, 0.5)
     ];
 
+    function deep_copy(arr) {
+        return arr.map(e => Array.isArray(e) ? deep_copy(e) : e);
+    }
 
-    let leg3 = leg1.map(a => a); //cheap copy of some sub arrays
-    let leg4 = leg2.map(a => a); //cheap copy of some sub arrays
+    let leg3 = deep_copy(leg1);
+    let leg4 = deep_copy(leg2);
 
+    leg3[1][5][1][1] = yaw_speed / 6;
+    leg4[1][5][1][1] = yaw_speed / 6;
     leg3[2] = true;
     leg4[2] = true;
     leg3[3] = [0, -Math.PI / 2, 0];
@@ -355,7 +360,7 @@ function form_dragon(time_ms) {
     let wing_rots = [
         -0.15,
         0,
-        0.5 * Math.sin(/*2*/ flap_freq * time_ms / 500) - 1,
+        0.4 * Math.sin(flap_freq * time_ms + flap_phase) - 1.1,
     ];
     let wing1 = [
         [
@@ -414,7 +419,7 @@ function form_dragon(time_ms) {
             [0, [0,0,0], 0]
         ],
         false,
-        [-1.1, 0, 0],
+        [-1.1 - dragon_direction.pitch/2, yaw_speed /3, 0],
         calculate_position_along_part(body, 0.96)
     ];
 

@@ -264,7 +264,14 @@ let min_fly_height = 0.05;
 
 let yaw_speed = 0;
 
-var flap_freq;
+var flap_freq = 2;
+var flap_phase = 0;
+function set_flap_freq(new_flap_freq) {
+    new_flap_freq /= 500; // make numbers more manageable
+    flap_phase = flap_freq * time_ms + flap_phase - new_flap_freq * time_ms;
+    flap_phase %= 2 * Math.PI;
+    flap_freq = new_flap_freq;
+}
 
 let terrain = gen_terrain();
 let terrain_positions = new Float32Array(terrain['points'].flat());
@@ -290,18 +297,17 @@ function update(time) {
         Math.cos(dragon_direction.pitch) * Math.cos(dragon_direction.yaw)
     ];
 
-
     let this_spd = spd;
     if (dragon_direction_vect[1] < -0.4) {
         this_spd = spd * (1 + -dragon_direction_vect[1]);
-        flap_freq = 0;
+        set_flap_freq(1);
     } else if (dragon_direction_vect[1] > 0.4) {
         this_spd = spd * 0.8;
-        flap_freq = 4;
+        set_flap_freq(4);
     } else {
-        flap_freq = 2;
+        set_flap_freq(2);
     }
-    //flap_freq = dragon_direction_vect[1] + 4; // - how not make this jumpy ??
+    //flap_freq = dragon_direction_vect[1] + 2; // - how not make this jumpy ??
 
     dragon_position = misc.add_vec(
         dragon_position,
@@ -313,8 +319,8 @@ function update(time) {
 
     cam = misc.sub_vec(
         dragon_position,
-        misc.scale_vec(dragon_direction_vect, dist)
-        //[0, 0, 0.5]
+        //misc.scale_vec(dragon_direction_vect, dist)
+        [0, 0, 0.5]
     );
 
     set_u_matrix();
