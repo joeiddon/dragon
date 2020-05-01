@@ -236,14 +236,14 @@ function form_dragon(time_ms) {
                     // ASJUST THESE PARAMETERS for different tail-wagging
                     // work by k * sin(a t + b x) where k, a, b constants
                     [
-                        0.1 *
+                        0.05 *
                         Math.sin(
-                            1 * t +
+                            0.3 * t +
                             6 * x
-                        ),
+                        ) + 0.02,
                         0.1 *
                         Math.sin(
-                            1 * t +
+                            0.6 * t +
                             6 * x
                         ),
                         0

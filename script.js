@@ -97,7 +97,7 @@ function get_texcoord(texture, coord) {
 
 function gh(x,y) {
     // get height at x,y
-    return 1.5 * perlin.get(x,y) + perlin.get(4*x, 4*y) / 5;
+    return 2.5 * perlin.get(x,y) + perlin.get(4*x, 4*y) / 5;
 }
 
 function calculate_normal(x,y) {
@@ -258,7 +258,7 @@ let time_ms; // declared earlier for a hack
 let last_time;
 let time_delta;
 
-let dist = 0.1;
+let dist = 0.15;
 let spd = 0.5; //block per sec
 let min_fly_height = 0.05;
 
@@ -292,15 +292,16 @@ function update(time) {
 
 
     let this_spd = spd;
-    if (dragon_direction_vect[1] < -0.2) {
+    if (dragon_direction_vect[1] < -0.4) {
+        this_spd = spd * (1 + -dragon_direction_vect[1]);
         flap_freq = 0;
-        this_spd = spd * 1.2;
     } else if (dragon_direction_vect[1] > 0.4) {
         this_spd = spd * 0.8;
         flap_freq = 4;
     } else {
         flap_freq = 2;
     }
+    //flap_freq = dragon_direction_vect[1] + 4; // - how not make this jumpy ??
 
     dragon_position = misc.add_vec(
         dragon_position,
