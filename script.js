@@ -174,25 +174,32 @@ function gen_terrain_chunk(chunk_x, chunk_y) {
             //texpoints.push([0.5,0.5]);
         }
     }
-    let chunk = {'points': points, 'normals': normals, 'texpoints': texpoints};
+    let chunk = {
+        'positions': new Float32Array(points.flat()),
+        'normals': new Float32Array(normals.flat()),
+        'texcoords': new Float32Array(texpoints.flat()),
+        'num-points': points.length
+    };
     chunk_memory[[chunk_x, chunk_y]] = chunk;
     return chunk;
 }
 
+//translation of surrounding chunks in dragon yaw direction so more is in FOV
+//and less behind the camera
+let CHUNK_VIEW_TRANS = 3;
+
 function gen_terrain() {
-    let points = [];
-    let normals = [];
-    let texpoints = [];
-    // generate each chunk
+    let chunks = [];
     for (let x = -4; x < 4; x ++){
         for (let y = -4; y < 4; y ++){
-            let chunk = gen_terrain_chunk(x,y);
-            points.push(...chunk['points']);
-            normals.push(...chunk['normals']);
-            texpoints.push(...chunk['texpoints']);
+            let chunk = gen_terrain_chunk(
+                x + parseInt(dragon_position[0] + Math.sin(dragon_direction.yaw)*CHUNK_VIEW_TRANS),
+                y + parseInt(dragon_position[2] + Math.cos(dragon_direction.yaw)*CHUNK_VIEW_TRANS)
+            );
+            chunks.push(chunk);
         }
     }
-    return {'points': points, 'normals': normals, 'texpoints': texpoints};
+    return chunks;
 }
 
 function flatten_4d(array) {
@@ -259,7 +266,14 @@ let last_time;
 let time_delta;
 
 let dist = 0.15;
-let spd = 0.5; //block per sec
+
+// units are completely messed up
+let GLIDE_SPD = 0.7;
+let DAMPENING_INCR = 0.5;
+let DIVE_OR_CLIMB_INCR = 2;
+let MIN_SPD = 0.5;
+let MAX_SPD = 50;
+let spd = GLIDE_SPD;
 let min_fly_height = 0.05;
 
 let yaw_speed = 0;
@@ -275,11 +289,6 @@ function set_flap_freq(new_flap_freq) {
 
 let fpv = true;
 
-let terrain = gen_terrain();
-let terrain_positions = new Float32Array(terrain['points'].flat());
-let terrain_normals = new Float32Array(terrain['normals'].flat());
-let terrain_texcoords = new Float32Array(terrain['texpoints'].flat());
-
 function update(time) {
     time_ms = time; // assign to global
     if (!last_time){
@@ -290,7 +299,6 @@ function update(time) {
     time_delta = (time_ms - last_time) / 1000;
     last_time = time_ms;
 
-
     dragon_direction.yaw += yaw_speed * time_delta;
 
     let dragon_direction_vect = [
@@ -300,10 +308,26 @@ function update(time) {
     ];
 
     let this_spd = spd;
-    if (dragon_direction_vect[1] < -0.4) {
-        this_spd = spd * 1.1 * (1 - dragon_direction_vect[1]);
-        //set_flap_freq(0.5);
-    }// else if (dragon_direction_vect[1] > 0.4) {
+    if (Math.abs(dragon_direction_vect[1]) < 0.4) {
+        // if not diving or climbing, step towards gliding speed
+        if (Math.abs(spd - GLIDE_SPD) > DAMPENING_INCR * time_delta) {
+            spd += (spd < 0.7 ? 1 : -1) * DAMPENING_INCR * time_delta;
+        } else {
+            spd = GLIDE_SPD;
+        }
+    } else {
+        //gliding or climbing, so adjust speed according to angle
+        if (spd < MIN_SPD) spd = MIN_SPD;
+        if (spd > MAX_SPD) spd = MAX_SPD;
+        if (spd > MIN_SPD && spd < MAX_SPD)
+        spd += -(dragon_direction_vect[1] ** 3) * DIVE_OR_CLIMB_INCR * time_delta
+    }
+    //if (spd < 0.3) spd = 0.3;
+    //if (dragon_direction_vect[1] < -0.4) {
+    //    spd += 0.04;
+    //    this_spd = spd * 1.2 * (1 - dragon_direction_vect[1]);
+    //    //set_flap_freq(0.5);
+    //}// else if (dragon_direction_vect[1] > 0.4) {
     //    this_spd = spd;
     //    //set_flap_freq(6);
     //}
@@ -328,16 +352,24 @@ function update(time) {
 
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, positions_buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, terrain_positions, gl.STATIC_DRAW);
+    /** draw terrain */
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, normals_buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, terrain_normals, gl.STATIC_DRAW);
+    let chunks = gen_terrain();
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, texcoords_buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, terrain_texcoords, gl.STATIC_DRAW);
+    for (let chunk of chunks) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, positions_buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, chunk['positions'], gl.STATIC_DRAW);
 
-    gl.drawArrays(gl.TRIANGLES, 0, terrain['points'].length);
+        gl.bindBuffer(gl.ARRAY_BUFFER, normals_buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, chunk['normals'], gl.STATIC_DRAW);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, texcoords_buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, chunk['texcoords'], gl.STATIC_DRAW);
+
+        gl.drawArrays(gl.TRIANGLES, 0, chunk['num-points']);
+    }
+
+    /* draw draongs */
 
     let k = 0.007;
     let m_scale = [
@@ -348,8 +380,8 @@ function update(time) {
     ];
     let m_dragon_rot = multiply_many([
         m4.rotation_y(dragon_direction.yaw),
-        m4.rotation_x(-dragon_direction.pitch),
-        m4.rotation_z(-yaw_speed / 4)
+        m4.rotation_x(-dragon_direction.pitch * 1.15), // tilt a bit more so can really see
+        m4.rotation_z(-yaw_speed / 3)
     ]);
     let m_dragon_all = multiply_many([
         m4.translation(...dragon_position),
@@ -377,6 +409,8 @@ function update(time) {
     if (positions.length != normals.length) console.error('normals and positions different lengths');
 
     gl.drawArrays(gl.TRIANGLES, 0, dragon['points'].length);
+
+    draw_stats();
     requestAnimationFrame(update);
 }
 
@@ -404,3 +438,11 @@ canvas.addEventListener('mousemove', function(e) {
 
 canvas.addEventListener('wheel', e => {dist *= 1 + e.deltaY / 200;});
 canvas.addEventListener('click', e => {fpv = !fpv;});
+
+let fps = 0;
+function draw_stats() {
+    fps = 0.9 * fps + 0.1 * (1 / time_delta);
+    document.getElementById('stats').innerText =
+`spd = ${spd.toFixed(2)}
+fps = ${parseInt(fps)}`;
+}
