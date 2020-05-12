@@ -60,13 +60,10 @@ gl.bindTexture(gl.TEXTURE_2D, texture);
 // fill with a blue pixel whilst wait for texture atlas image to load
 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
               new Uint8Array([0, 0, 255, 255]));
-let image = new Image();
-image.src = 'texture_atlas.png'
-image.onload = function() {
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-  gl.generateMipmap(gl.TEXTURE_2D);
-};
+let image = document.getElementById('texture-img');//new Image();
+gl.bindTexture(gl.TEXTURE_2D, texture);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+gl.generateMipmap(gl.TEXTURE_2D);
 
 let textures = {
     // format of values: [min corner, max corner] - from top left of image
@@ -423,7 +420,7 @@ function toclipspace(x, y) {
     ];
 }
 
-canvas.addEventListener('mousemove', function(e) {
+document.addEventListener('mousemove', function(e) {
     let sensitivity = 150;
     // if right click held down, so panning
     //if (e.buttons & 1) {
@@ -436,8 +433,8 @@ canvas.addEventListener('mousemove', function(e) {
     //}
 });
 
-canvas.addEventListener('wheel', e => {dist *= 1 + e.deltaY / 200;});
-canvas.addEventListener('click', e => {fpv = !fpv;});
+document.addEventListener('wheel', e => {dist *= 1 + e.deltaY / 200;});
+document.addEventListener('click', e => {fpv = !fpv;});
 
 let fps = 0;
 function draw_stats() {
