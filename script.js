@@ -61,11 +61,14 @@ gl.bindTexture(gl.TEXTURE_2D, texture);
 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
               new Uint8Array([0, 0, 255, 255]));
 let image = document.getElementById('texture-img');//new Image();
-image.addEventListener('load', function() {
+function load_textures() {
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
     gl.generateMipmap(gl.TEXTURE_2D);
-});
+}
+// if cached then load straight up, otherwise wait to load
+if (image.complete) load_textures();
+else image.addEventListener('load', load_textures);
 
 let textures = {
     // format of values: [min corner, max corner] - from top left of image
