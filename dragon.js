@@ -12,7 +12,7 @@ function multiply_many(matrices) {
     return matrices.reduce((acc,cur) => m4.multiply(acc, cur), m4.identity());
 }
 
-function generate_tube(segment_shape, transforms){
+function generate_tube(segment_shape, transforms, texture){
     /*
      * Extrudes segment_shape according to transforms from origin into positive
      * z-direction.
@@ -109,7 +109,7 @@ function generate_tube(segment_shape, transforms){
                 points.push(v[0]['points'][v[1]]);
                 normals.push(v[0]['normals'][v[1]]);
                 let ts = 1;
-                texpoints.push(get_texcoord('raspberry_scales', [
+                texpoints.push(get_texcoord(texture, [
                     (circum_percent + circum_interval_percent * v[2][0]) * ts,
                     (1 - (tube_percent + v[2][1] * tube_interval_percent)) * ts,
                 ]));
@@ -474,7 +474,7 @@ function form_dragon(time_ms) {
             [[mirror ? -1 : 1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         ]);
         let m_all = m4.multiply(m4.translation(...translation), m_rot);
-        let tube = generate_tube(seg_shape, seg_transforms);
+        let tube = generate_tube(seg_shape, seg_transforms, 'raspberry_scales');
         let transformed_tube = transform_facets(tube, m_all, m_rot);
         points.push(...transformed_tube['points']);
         normals.push(...transformed_tube['normals']);
@@ -511,4 +511,32 @@ function form_dragon(time_ms) {
         'normals': normals,
         'texpoints': texpoints
     };
+}
+
+let random_rot = (max_angle) => [
+    max_angle * (2 * Math.random() - 1),
+    max_angle * (2 * Math.random() - 1),
+    0
+];
+function form_tree() {
+    let tree = generate_tube(
+        [
+            [-1,  0],
+            [ 0,  1],
+            [ 1,  0],
+            [ 0, -1]
+        ],
+        [
+            [3 + Math.random() * 2, random_rot(0), 0.6 + 0.5 * Math.random()],
+            [3 + Math.random() * 2, random_rot(0.3), 0.3 + 0.5 * Math.random()],
+            [3 + Math.random() * 2, random_rot(0.7), 0.6 + 0.5 * Math.random()],
+            [3 + Math.random() * 2, random_rot(0.6), 0.6 + 0.5 * Math.random()],
+            [3 + Math.random() * 2, random_rot(0.6), 0.2 + 0.5 * Math.random()],
+            [3 + Math.random() * 2, random_rot(0.5), 0]
+        ],
+        'bark'
+    );
+    let upright = m4.rotation_x(-Math.PI/2);
+    tree = transform_facets(tree, upright, upright);
+    return tree;
 }

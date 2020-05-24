@@ -72,22 +72,24 @@ else image.addEventListener('load', load_textures);
 
 let textures = {
     // format of values: [min corner, max corner] - from top left of image
-    // that bottom left corner of texture is [0, 0]
     // weird black lines using texture atlas at boundaries - so this hack trims
-    // edges a little - maybe to do with anti-alisaing ?
-    'terrain': [[0.001, 0.001], [0.4999, 0.4999]],
-    //'scales': [[0, 0.375], [0.5, 0.5]]
-    //'terrain': [[0,0], [1, 1]],
-    'scales': [[0.001, 0.4999], [0.125, 0.625]],
-    'gradient': [[0.4999, 0.001], [0.7499, 0.2499]],
-    'raspberry_scales': [[0.5001, 0.5001], [0.999, 0.999]]
+    // edges a little - to do with auto mipmap anti aliasing - need to pre-gen
+    // mipmaps. For now just having a little border to each texture as a hax in
+    // the get_texcoord function.
+    'lava': [[0, 0], [0.5, 0.5]],
+    'scales': [[0, 0.5], [0.125, 0.625]],
+    //'gradient': [[0.4999, 0.001], [0.7499, 0.2499]],
+    'raspberry_scales': [[0.5, 0.5], [1, 1]],
+    'black': [[0.25, 0.75], [0.25, 0.75]],
+    'bark': [[0.5, 0], [1, 0.5]],
+    'grass': [[0.25, 0.5], [0.5, 0.75]]
 }
 
 function get_texcoord(texture, coord) {
-    let min_x = textures[texture][0][0];
-    let min_y = textures[texture][0][1];
-    let max_x = textures[texture][1][0];
-    let max_y = textures[texture][1][1];
+    let min_x = textures[texture][0][0] + 0.01;
+    let min_y = textures[texture][0][1] + 0.01;
+    let max_x = textures[texture][1][0] - 0.01;
+    let max_y = textures[texture][1][1] - 0.01;
     // wrap around at positive end before mapping to atlas
     if (coord[0] > 1) coord[0] %= 1;
     if (coord[1] > 1) coord[1] %= 1;
@@ -162,12 +164,12 @@ function gen_terrain_chunk(chunk_x, chunk_y) {
 
             // texture scale
             let ts = 1;
-            texpoints.push(get_texcoord('terrain', [ts * (xx/divs), ts * (yy/divs)]));
-            texpoints.push(get_texcoord('terrain', [ts * (xx/divs+d), ts * (yy/divs)]));
-            texpoints.push(get_texcoord('terrain', [ts * (xx/divs+d), ts * (yy/divs+d)]));
-            texpoints.push(get_texcoord('terrain', [ts * (xx/divs), ts * (yy/divs)]));
-            texpoints.push(get_texcoord('terrain', [ts * (xx/divs), ts * (yy/divs+d)]));
-            texpoints.push(get_texcoord('terrain', [ts * (xx/divs+d), ts * (yy/divs+d)]));
+            texpoints.push(get_texcoord('lava', [ts * (xx/divs), ts * (yy/divs)]));
+            texpoints.push(get_texcoord('lava', [ts * (xx/divs+d), ts * (yy/divs)]));
+            texpoints.push(get_texcoord('lava', [ts * (xx/divs+d), ts * (yy/divs+d)]));
+            texpoints.push(get_texcoord('lava', [ts * (xx/divs), ts * (yy/divs)]));
+            texpoints.push(get_texcoord('lava', [ts * (xx/divs), ts * (yy/divs+d)]));
+            texpoints.push(get_texcoord('lava', [ts * (xx/divs+d), ts * (yy/divs+d)]));
             //texpoints.push([0,0]);
             //texpoints.push([0.5,0]);
             //texpoints.push([0.5,0.5]);
@@ -175,6 +177,27 @@ function gen_terrain_chunk(chunk_x, chunk_y) {
             //texpoints.push([0,0.5]);
             //texpoints.push([0.5,0.5]);
         }
+    }
+    // add one cluster of random trees to this chunk - between one and three
+    // trees
+    let tree_loc = [chunk_x + Math.random(), chunk_y + Math.random()];
+    let tree_raise = gh(...tree_loc) - 0.5; // sink into ground a little
+    let z = 0.07; //0.02 + Math.random() * 0.08;
+    let m_tree = m4.multiply(
+        m4.translation(tree_loc[0], tree_raise, tree_loc[1]),
+        [
+            [z, 0, 0, 0],
+            [0, z, 0, 0],
+            [0, 0, z, 0],
+            [0, 0, 0, 1]
+        ]
+    );
+    for (let i = 0; i < parseInt(Math.random() * 3); i ++) {
+        let tree = form_tree();
+        tree = transform_facets(tree, m_tree, m4.identity());
+        points.push(...tree['points'].map(v => v.slice(0,3)));
+        normals.push(...tree['normals'].map(v => v.slice(0,3)));
+        texpoints.push(...tree['texpoints']);
     }
     let chunk = {
         'positions': new Float32Array(points.flat()),
@@ -188,12 +211,12 @@ function gen_terrain_chunk(chunk_x, chunk_y) {
 
 //translation of surrounding chunks in dragon yaw direction so more is in FOV
 //and less behind the camera
-let CHUNK_VIEW_TRANS = 3;
+let CHUNK_VIEW_TRANS = 5;
 
 function gen_terrain() {
     let chunks = [];
-    for (let x = -4; x < 4; x ++){
-        for (let y = -4; y < 4; y ++){
+    for (let x = -6; x < 6; x ++){
+        for (let y = -6; y < 6; y ++){
             let chunk = gen_terrain_chunk(
                 x + parseInt(dragon_position[0] + Math.sin(dragon_direction.yaw)*CHUNK_VIEW_TRANS),
                 y + parseInt(dragon_position[2] + Math.cos(dragon_direction.yaw)*CHUNK_VIEW_TRANS)
@@ -226,7 +249,7 @@ function perspective_mat(fov, aspect, near, far){
     ];
 }
 
-let fov = misc.deg_to_rad(70);
+let fov = misc.deg_to_rad(80);
 let near = 0.001; //closest z-coordinate to be rendered
 let far = 100; //furthest z-coordianted to be rendered
 let m_perspective;
@@ -270,10 +293,10 @@ let time_delta;
 let dist = 0.15;
 
 // units are completely messed up
-let GLIDE_SPD = 1.2;
-let DAMPENING_INCR = 0.2;
+let GLIDE_SPD = 0.9;
+let DAMPENING_INCR = 0.4;
 let DIVE_OR_CLIMB_INCR = 10;
-let MIN_SPD = 0.5;
+let MIN_SPD = 0.7;
 let MAX_SPD = 20;
 let spd = GLIDE_SPD;
 let min_fly_height = 0.05;
@@ -409,9 +432,7 @@ function update(time) {
     gl.bindBuffer(gl.ARRAY_BUFFER, texcoords_buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texcoords), gl.STATIC_DRAW);
 
-    //return number of triangles
-    if (positions.length != normals.length) console.error('normals and positions different lengths');
-
+    // if (positions.length != normals.length) console.error('normals and positions different lengths');
     gl.drawArrays(gl.TRIANGLES, 0, dragon['points'].length);
 
     draw_stats();
