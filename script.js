@@ -101,7 +101,7 @@ function get_texcoord(texture, coord) {
 
 function gh(x,y) {
     // get height at x,y
-    return 2 * perlin.get(x,y) + 3 * perlin.get(0.5 * x, 0.5 * y);
+    return 2 * perlin.get(x,y) + 4 * perlin.get(0.5 * x, 0.5 * y);
 }
 
 function calculate_normal(x,y) {
@@ -314,6 +314,15 @@ function set_flap_freq(new_flap_freq) {
 
 let fpv = true;
 
+let TARGET_INTERVAL = 3000;
+let last_target_ms = 0;
+let yaw_speed_target = 0;
+let pitch_target = 0;
+
+let MAX_HEIGHT = 10;
+
+let manual_mode = false;
+
 function update(time) {
     time_ms = time; // assign to global
     if (!last_time){
@@ -324,7 +333,25 @@ function update(time) {
     time_delta = (time_ms - last_time) / 1000;
     last_time = time_ms;
 
+    if (!manual_mode) {
+        if (time_ms - last_target_ms > TARGET_INTERVAL) {
+            last_target_ms = time_ms;
+            yaw_speed_target = 2 * (2 * Math.random() - 1);
+            pitch_target = 0.6 * (2 * Math.random() - 1);
+        }
+
+        let yaw_speed_err = yaw_speed - yaw_speed_target;
+        yaw_speed += -yaw_speed_err * 0.03;
+        let pitch_err = dragon_direction.pitch - pitch_target;
+        dragon_direction.pitch += -pitch_err * 0.03;
+    }
+
     dragon_direction.yaw += yaw_speed * time_delta;
+
+    if (dragon_position[1] > MAX_HEIGHT) {
+        dragon_direction.pitch = -0.4;
+        dragon_position[1] = MAX_HEIGHT;
+    }
 
     let dragon_direction_vect = [
         Math.cos(dragon_direction.pitch) * Math.sin(dragon_direction.yaw),
@@ -449,6 +476,7 @@ function toclipspace(x, y) {
 }
 
 document.addEventListener('mousemove', function(e) {
+    if (!manual_mode) return;
     let sensitivity = 150;
     // if right click held down, so panning
     //if (e.buttons & 1) {
@@ -462,12 +490,16 @@ document.addEventListener('mousemove', function(e) {
 });
 
 document.addEventListener('wheel', e => {dist *= 1 + e.deltaY / 200;});
-document.addEventListener('click', e => {fpv = !fpv;});
+document.addEventListener('click', e => {manual_mode = !manual_mode;});
 
 let fps = 0;
 function draw_stats() {
     fps = 0.9 * fps + 0.1 * (1 / time_delta);
     document.getElementById('stats').innerText =
 `spd = ${spd.toFixed(2)}
-fps = ${parseInt(fps)}`;
+fps = ${parseInt(fps)}
+yaw spd target = ${yaw_speed_target.toFixed(2)}
+yaw speed = ${yaw_speed.toFixed(2)}
+pitch target = ${pitch_target.toFixed(2)}
+pitch speed = ${dragon_direction.pitch.toFixed(2)}`;
 }

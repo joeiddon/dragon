@@ -59,8 +59,8 @@ void main(){
     vec3 fog_color = vec3(0.8, 0.8, 0.8); //this should match clear color
     float fog_intensity = 0.0;
     // these should be uniforms!
-    float fog_near = 6.0;
-    float fog_far = 8.0;
+    float fog_near = 8.0;
+    float fog_far = 9.0;
     if (camdist > fog_far) {
         fog_intensity = 1.0;
     } else if (camdist < fog_near) {
@@ -70,7 +70,7 @@ void main(){
     }
     /* might speed things up to move the fog_intensity calculation to the
      * vertex shader ... */
-    gl_FragColor.rgb = (1.0 - fog_intensity) * (0.1 + 0.9 * intensity) * texcol.rgb + fog_intensity * fog_color;
+    gl_FragColor.rgb = (1.0 - fog_intensity) * (0.3 + 0.7 * intensity) * texcol.rgb + fog_intensity * fog_color;
     gl_FragColor.a = 1.0;
 }
 `;
