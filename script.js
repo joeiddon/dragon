@@ -99,7 +99,7 @@ function get_texcoord(texture, coord) {
 
 function gh(x,y) {
     // get height at x,y
-    return 2.5 * perlin.get(x,y) + perlin.get(4*x, 4*y) / 5;
+    return 2 * perlin.get(x,y) + 3 * perlin.get(0.5 * x, 0.5 * y);
 }
 
 function calculate_normal(x,y) {
@@ -270,11 +270,11 @@ let time_delta;
 let dist = 0.15;
 
 // units are completely messed up
-let GLIDE_SPD = 0.7;
-let DAMPENING_INCR = 0.5;
-let DIVE_OR_CLIMB_INCR = 2;
+let GLIDE_SPD = 1.2;
+let DAMPENING_INCR = 0.2;
+let DIVE_OR_CLIMB_INCR = 10;
 let MIN_SPD = 0.5;
-let MAX_SPD = 50;
+let MAX_SPD = 20;
 let spd = GLIDE_SPD;
 let min_fly_height = 0.05;
 
@@ -322,7 +322,7 @@ function update(time) {
         if (spd < MIN_SPD) spd = MIN_SPD;
         if (spd > MAX_SPD) spd = MAX_SPD;
         if (spd > MIN_SPD && spd < MAX_SPD)
-        spd += -(dragon_direction_vect[1] ** 3) * DIVE_OR_CLIMB_INCR * time_delta
+        spd += -(dragon_direction_vect[1] ** 3) * DIVE_OR_CLIMB_INCR * time_delta;
     }
     //if (spd < 0.3) spd = 0.3;
     //if (dragon_direction_vect[1] < -0.4) {
@@ -340,8 +340,10 @@ function update(time) {
         misc.scale_vec(dragon_direction_vect, this_spd * time_delta)
     );
 
-    if (gh(dragon_position[0], dragon_position[2]) > dragon_position[1] - min_fly_height)
+    if (gh(dragon_position[0], dragon_position[2]) > dragon_position[1] - min_fly_height) {
         dragon_position[1] = gh(dragon_position[0], dragon_position[2]) + min_fly_height;
+        spd = GLIDE_SPD;
+    }
 
     cam = misc.sub_vec(
         dragon_position,
