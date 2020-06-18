@@ -108,11 +108,10 @@ function calculate_normal(x,y) {
     /* un-normalised - shader can take care of that! */
     let delta = 0.0001;
     let h = gh(x,y);
-    let c =  misc.cross(
+    return misc.cross(
         misc.sub_vec([x, gh(x,y+delta), y+delta], [x, h, y]),
         misc.sub_vec([x+delta, gh(x+delta,y), y], [x, h, y]),
     );
-    return [c[1], c[0], c[2]];
 }
 
 var chunk_memory = {}
@@ -270,7 +269,7 @@ let cam = [0, 1.5, -5]; // issues when cam is up x-axis with panning of space_pi
 let dragon_position = [0, 3, 0];
 let dragon_direction = {'yaw': 0, 'pitch': 0};
 
-let light = [-1, -1, 1]; // normalised in vertex shader
+let light = [-0.2, -1, 0.2]; // normalised in vertex shader
 
 function set_u_matrix(){
     // matrices in right-to-left order (i.e. in order of application)
